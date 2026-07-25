@@ -1,4 +1,4 @@
-# epicgamesnotif
+# EG Alert
 
 A tiny Cloudflare Worker that posts the Epic Games Store's weekly free games to a
 Discord channel every Thursday at 10:01 AM Eastern.

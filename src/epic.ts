@@ -91,7 +91,7 @@ function pickImage(el: Element): string | null {
 export async function fetchFreeGames(now = new Date()): Promise<FreeGame[]> {
   const res = await fetch(
     `${FREE_GAMES_URL}?locale=en-US&country=US&allowCountries=US`,
-    { headers: { "User-Agent": "epicgamesnotif (Cloudflare Worker)" } },
+    { headers: { "User-Agent": "eg-alert (Cloudflare Worker)" } },
   );
 
   if (!res.ok) {
