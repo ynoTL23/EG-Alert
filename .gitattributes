@@ -1,0 +1,9 @@
+# Normalize all text files to LF in the repository and in the working tree.
+# Without this, Windows checkouts store CRLF in the repo blobs, which shows up
+# as whole-file diffs whenever the file is touched from a different platform.
+* text=auto eol=lf
+
+# Binary files: never touch the bytes.
+*.png binary
+*.jpg binary
+*.ico binary
