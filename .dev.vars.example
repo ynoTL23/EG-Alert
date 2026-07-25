@@ -1,0 +1,5 @@
+# Copy this file to `.dev.vars` and fill in your real webhook URL.
+# `.dev.vars` is gitignored. Never commit the real value.
+#
+# Discord: Server Settings -> Integrations -> Webhooks -> New Webhook -> Copy URL
+DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
