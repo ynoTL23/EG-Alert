@@ -73,16 +73,26 @@ immediately without posting.
 The net effect is exactly one Discord post per week, always at 10:01 AM Eastern.
 The discarded firing is a no-op that does nothing but check the clock and log.
 
+The send time lives in `src/constants.ts` (`SEND_ZONE`, `SEND_WEEKDAY`,
+`SEND_HOUR`). The cron expressions can't be generated from it — Wrangler config
+is static JSON — so `npm run check:crons` verifies the two stay in agreement and
+prints the correct expressions when they drift. Run `npm run check` (typecheck +
+crons) after changing either.
+
 ## Project layout
 
 ```
 src/
-  index.ts     entrypoint — cron handler, manual trigger, orchestration
-  schedule.ts  when to post, and the Eastern wall-clock guard
-  epic.ts      fetches and filters the Epic free-games feed
-  discord.ts   builds the embed and posts it to the webhook
-wrangler.jsonc Worker config and cron triggers
-.dev.vars      local secrets (gitignored)
+  index.ts      entrypoint — cron handler, manual trigger, orchestration
+  schedule.ts   when to post, and the Eastern wall-clock guard
+  epic.ts       fetches and filters the Epic free-games feed
+  discord.ts    builds the embed and posts it to the webhook
+  constants.ts  values shared by more than one module (send time, store URL)
+  types.ts      shared types (FreeGame)
+scripts/
+  check-crons.ts  asserts wrangler.jsonc's crons match the send time
+wrangler.jsonc  Worker config and cron triggers
+.dev.vars       local secrets (gitignored)
 ```
 
 ## Notes

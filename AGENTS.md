@@ -15,10 +15,12 @@ wrong change.
 ## Commands
 
 ```sh
-npm run dev        # local server; GET / runs the job immediately
-npm run typecheck  # tsc --noEmit — run this after any edit
-npm run deploy     # publish to Cloudflare
-npm run secrets    # set DISCORD_WEBHOOK_URL in production
+npm run dev          # local server; GET / runs the job immediately
+npm run check        # typecheck + cron check — run this after any edit
+npm run typecheck    # tsc --noEmit
+npm run check:crons  # assert wrangler.jsonc crons match SEND_* in constants.ts
+npm run deploy       # publish to Cloudflare
+npm run secrets      # set DISCORD_WEBHOOK_URL in production
 ```
 
 **Assume `npm run dev` is already running.** Don't start it, and don't start a
@@ -27,21 +29,29 @@ at <http://localhost:8787>. To exercise a change, just `curl` it. If the server
 turns out not to be running, say so and let the user start it rather than
 launching it yourself.
 
-There is no test suite and none is expected. `npm run typecheck` is the check
-that matters — run it before declaring work done.
+There is no test suite and none is expected. `npm run check` is the check that
+matters — run it before declaring work done.
 
 ## Layout
 
-| File                | Responsibility                                        |
-| ------------------- | ----------------------------------------------------- |
-| `src/index.ts`      | Entrypoint: cron handler, manual trigger, orchestration |
-| `src/schedule.ts`   | When to post; the Eastern wall-clock guard             |
-| `src/epic.ts`       | Fetch + filter Epic's promotions feed                  |
-| `src/discord.ts`    | Build the embed, POST to the webhook                   |
-| `wrangler.jsonc`    | Worker config and cron triggers                        |
+| File                     | Responsibility                                          |
+| ------------------------ | ------------------------------------------------------- |
+| `src/index.ts`           | Entrypoint: cron handler, manual trigger, orchestration |
+| `src/schedule.ts`        | When to post; the Eastern wall-clock guard              |
+| `src/epic.ts`            | Fetch + filter Epic's promotions feed                   |
+| `src/discord.ts`         | Build the embed, POST to the webhook                    |
+| `src/constants.ts`       | Values used by more than one module                     |
+| `src/types.ts`           | Types used by more than one module                      |
+| `scripts/check-crons.ts` | Asserts the crons match the send time                   |
+| `wrangler.jsonc`         | Worker config and cron triggers                         |
 
 Keep fetching, formatting, and dispatch in their own files. `epic.ts` should not
 know Discord exists.
+
+`constants.ts` and `types.ts` are for genuinely shared values only — currently
+the send time, the free-games page URL, and `FreeGame`. A constant or type used
+in one file stays in that file. Don't turn either into a dumping ground, and
+don't add barrel files.
 
 `fetchFreeGames()` and `sendToDiscord()` each take a trailing `doFetch` argument
 defaulting to the global `fetch`. It exists so both can be exercised against
@@ -54,12 +64,15 @@ everywhere else. Don't route it through a client object or a DI container.
 Cloudflare crons are UTC-only and UTC has no DST, so no single expression means
 "10:01 Eastern" year-round. `wrangler.jsonc` registers both `1 14 * * 4` and
 `1 15 * * 4`; `shouldSendNow()` in `src/schedule.ts` discards whichever one is
-not 10:01 Eastern today. The constants at the top of that file are the source of
-truth for the send time, but the cron expressions must be updated by hand to
-match — nothing enforces the pairing. Removing either half breaks a stated
-requirement:
-drop a cron and it fires at the wrong time for half the year, drop the guard and
-it posts twice a week. See the README's schedule section.
+not 10:01 Eastern today. Removing either half breaks a stated requirement: drop a
+cron and it fires at the wrong time for half the year, drop the guard and it
+posts twice a week. See the README's schedule section.
+
+`SEND_ZONE`/`SEND_WEEKDAY`/`SEND_HOUR` in `src/constants.ts` are the source of
+truth for the send time. The cron expressions still have to be edited by hand —
+Wrangler config is static JSON and can't import them — but `npm run check:crons`
+now fails when the two disagree and prints the expressions you should have. If
+you change the send time, change both and run it.
 
 **`discountPercentage: 0` means free, not "no discount".**
 It is the *resulting* percentage. The code checks
