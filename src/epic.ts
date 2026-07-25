@@ -88,8 +88,16 @@ function pickImage(el: Element): string | null {
   return images.find((img) => img?.url)?.url ?? null;
 }
 
-export async function fetchFreeGames(now = new Date()): Promise<FreeGame[]> {
-  const res = await fetch(
+/**
+ * `doFetch` defaults to the global, so callers never have to pass it. It
+ * exists so the Epic payload quirks handled below can be exercised against
+ * recorded responses without hitting the live API.
+ */
+export async function fetchFreeGames(
+  now = new Date(),
+  doFetch: typeof fetch = fetch,
+): Promise<FreeGame[]> {
+  const res = await doFetch(
     `${FREE_GAMES_URL}?locale=en-US&country=US&allowCountries=US`,
     { headers: { "User-Agent": "eg-alert (Cloudflare Worker)" } },
   );

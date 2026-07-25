@@ -33,11 +33,13 @@ export function buildEmbed(games: FreeGame[]) {
   };
 }
 
+/** `doFetch` defaults to the global — see the note on fetchFreeGames. */
 export async function sendToDiscord(
   webhookUrl: string,
   games: FreeGame[],
+  doFetch: typeof fetch = fetch,
 ): Promise<void> {
-  const res = await fetch(webhookUrl, {
+  const res = await doFetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ embeds: [buildEmbed(games)] }),
