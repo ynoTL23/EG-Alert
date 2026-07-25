@@ -8,14 +8,23 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "check:crons": "node --experimental-strip-types scripts/check-crons.ts",
-    "check": "npm run typecheck && npm run check:crons",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run typecheck && npm run check:crons && npm run lint && npm run format:check",
     "trigger": "curl \"http://localhost:8787/__scheduled?cron=1+14+*+*+4\"",
     "secrets": "wrangler secret put DISCORD_WEBHOOK_URL"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260724.1",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^26.1.1",
+    "eslint": "^10.8.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
     "typescript": "^5.7.3",
+    "typescript-eslint": "^8.65.0",
     "wrangler": "^4.114.0"
   }
 }

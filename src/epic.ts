@@ -24,7 +24,9 @@ interface Element {
   catalogNs?: { mappings?: Array<{ pageSlug?: string | null }> | null } | null;
   offerMappings?: Array<{ pageSlug?: string | null }> | null;
   promotions?: {
-    promotionalOffers?: Array<{ promotionalOffers?: PromotionalOffer[] | null }> | null;
+    promotionalOffers?: Array<{
+      promotionalOffers?: PromotionalOffer[] | null;
+    }> | null;
   } | null;
 }
 

@@ -15,12 +15,16 @@ wrong change.
 ## Commands
 
 ```sh
-npm run dev          # local server; GET / runs the job immediately
-npm run check        # typecheck + cron check — run this after any edit
-npm run typecheck    # tsc --noEmit
-npm run check:crons  # assert wrangler.jsonc crons match SEND_* in constants.ts
-npm run deploy       # publish to Cloudflare
-npm run secrets      # set DISCORD_WEBHOOK_URL in production
+npm run dev           # local server; GET / runs the job immediately
+npm run check         # typecheck + crons + lint + format — run after any edit
+npm run typecheck     # tsc --noEmit
+npm run check:crons   # assert wrangler.jsonc crons match SEND_* in constants.ts
+npm run lint          # eslint (type-aware)
+npm run lint:fix      # eslint --fix
+npm run format        # prettier --write
+npm run format:check  # prettier --check
+npm run deploy        # publish to Cloudflare
+npm run secrets       # set DISCORD_WEBHOOK_URL in production
 ```
 
 **Assume `npm run dev` is already running.** Don't start it, and don't start a
@@ -31,6 +35,18 @@ launching it yourself.
 
 There is no test suite and none is expected. `npm run check` is the check that
 matters — run it before declaring work done.
+
+Formatting is Prettier's job and linting is ESLint's; the two don't overlap
+(`eslint-config-prettier` turns off the stylistic rules). Don't hand-format code
+to match, and don't argue with Prettier — run `npm run format`. `wrangler.jsonc`
+is exempt: Prettier would add JSON5 trailing commas to it, so it's in
+`.prettierignore` and maintained by hand.
+
+Two type-aware rules are switched off in `eslint.config.js`, each with the
+reason inline — `require-await` (the `scheduled` handler uses `ctx.waitUntil`
+by design) and `no-unnecessary-type-assertion` (it misreads the `as` on
+`res.json()` in `epic.ts`). Both flagged correct code. Read the comment before
+re-enabling either.
 
 ## Layout
 
@@ -75,7 +91,7 @@ now fails when the two disagree and prints the expressions you should have. If
 you change the send time, change both and run it.
 
 **`discountPercentage: 0` means free, not "no discount".**
-It is the *resulting* percentage. The code checks
+It is the _resulting_ percentage. The code checks
 `price.totalPrice.discountPrice === 0` instead, which is unambiguous. Don't
 "fix" this to look for `100`.
 
@@ -88,7 +104,7 @@ handles this — verified against live API data where the featured free game had
 
 **Epic's feed includes games that are not currently free.**
 It returns upcoming promotions and unrelated discounts alongside the live
-giveaway. Both a live promotional window *and* a zero price are required.
+giveaway. Both a live promotional window _and_ a zero price are required.
 
 ## Secrets
 
@@ -110,7 +126,7 @@ file does not un-leak it.
 - TypeScript, ES modules, `strict` plus `noUncheckedIndexedAccess`.
 - Epic's payload is untrusted input: keep the optional chaining and defensive
   types in `epic.ts` rather than asserting with `!` or `as`.
-- Comments should explain *why* — the API quirks above are the reason most of the
+- Comments should explain _why_ — the API quirks above are the reason most of the
   non-obvious code exists. Don't strip them.
 - Failures should be loud in logs but must never post a broken or empty embed to
   Discord.

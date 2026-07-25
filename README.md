@@ -10,7 +10,7 @@ webhook.
 
 1. A cron trigger wakes the Worker on Thursday morning.
 2. It fetches Epic's free-games promotions feed and keeps only the offers that
-   are *actually free right now*.
+   are _actually free right now_.
 3. It posts a single embed to your Discord webhook with each game's title, a link
    to its store page, and a countdown to when the giveaway ends.
 
@@ -60,10 +60,10 @@ Cloudflare cron triggers **run on UTC only** — there is no timezone option, an
 UTC does not observe daylight saving. A single cron expression therefore cannot
 mean "10:01 Eastern" all year:
 
-| Cron (UTC)     | Summer (EDT, UTC-4) | Winter (EST, UTC-5) |
-| -------------- | ------------------- | ------------------- |
-| `1 14 * * 4`   | **10:01 AM** ✅     | 9:01 AM             |
-| `1 15 * * 4`   | 11:01 AM            | **10:01 AM** ✅     |
+| Cron (UTC)   | Summer (EDT, UTC-4) | Winter (EST, UTC-5) |
+| ------------ | ------------------- | ------------------- |
+| `1 14 * * 4` | **10:01 AM** ✅     | 9:01 AM             |
+| `1 15 * * 4` | 11:01 AM            | **10:01 AM** ✅     |
 
 So the Worker registers **both**, guaranteeing that one of them always lands on
 10:01 Eastern. `shouldSendNow()` in `src/schedule.ts` then checks the real
@@ -102,7 +102,7 @@ wrangler.jsonc  Worker config and cron triggers
   leaks, delete the webhook in Discord and make a new one.
 - Epic's feed is quirky in two ways the code works around: `productSlug` is often
   `null` (so store links are built from `catalogNs.mappings[].pageSlug`), and
-  `discountPercentage` is the *resulting* percentage, where `0` means free rather
+  `discountPercentage` is the _resulting_ percentage, where `0` means free rather
   than "no discount". The price is checked directly instead.
 - If Epic lists no free games, the Worker logs and posts nothing rather than
   sending an empty embed.

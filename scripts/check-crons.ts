@@ -48,7 +48,10 @@ function expectedFirings(): { hour: number; weekday: string }[] {
       }).formatToParts(candidate);
       const get = (type: string) => parts.find((p) => p.type === type)?.value;
 
-      if (Number(get("hour")) !== SEND_HOUR || get("weekday") !== SEND_WEEKDAY) {
+      if (
+        Number(get("hour")) !== SEND_HOUR ||
+        get("weekday") !== SEND_WEEKDAY
+      ) {
         continue;
       }
       // The UTC weekday can differ from the local one (e.g. a late-evening local
@@ -112,7 +115,9 @@ for (const cron of crons) {
   }
 
   const match = expected.find(
-    (e) => String(e.hour) === hour && WEEKDAYS.indexOf(e.weekday) === Number(dayOfWeek),
+    (e) =>
+      String(e.hour) === hour &&
+      WEEKDAYS.indexOf(e.weekday) === Number(dayOfWeek),
   );
   if (!match) {
     problems.push(

@@ -1,0 +1,9 @@
+node_modules
+package-lock.json
+.wrangler
+.claude
+
+# Prettier parses .jsonc as JSON5 and adds trailing commas. Wrangler tolerates
+# them, but wrangler.jsonc is config that check:crons asserts against — not
+# worth the churn. Its formatting is maintained by hand.
+*.jsonc
