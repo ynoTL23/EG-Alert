@@ -21,6 +21,12 @@ npm run deploy     # publish to Cloudflare
 npm run secrets    # set DISCORD_WEBHOOK_URL in production
 ```
 
+**Assume `npm run dev` is already running.** Don't start it, and don't start a
+second one on another port — Wrangler reloads on save, so edits are already live
+at <http://localhost:8787>. To exercise a change, just `curl` it. If the server
+turns out not to be running, say so and let the user start it rather than
+launching it yourself.
+
 There is no test suite and none is expected. `npm run typecheck` is the check
 that matters — run it before declaring work done.
 
