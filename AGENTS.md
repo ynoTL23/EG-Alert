@@ -114,3 +114,38 @@ file does not un-leak it.
   non-obvious code exists. Don't strip them.
 - Failures should be loud in logs but must never post a broken or empty embed to
   Discord.
+
+## Committing
+
+Run `npm run check` before committing. Commit only what the change touches —
+don't sweep unrelated edits in.
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/): a
+`type(scope): subject` line, imperative mood, lowercase, no trailing period,
+kept to 72 characters or fewer. Types in use here are `feat`, `fix`, `refactor`,
+`docs` and `chore`. The scope is optional and is a source path without the
+extension — `schedule`, `epic,discord`, `scripts`, `agents` — omit it when the
+change is repo-wide. Breaking changes get a `!` before the colon and a
+`BREAKING CHANGE:` footer.
+
+Add a body whenever the subject line leaves a "why" unanswered — which is most
+non-trivial commits. Blank line after the subject, hard-wrapped at 80 columns
+like the existing history, and write prose, not a restated diff. Cover
+whichever of these apply:
+
+- What was wrong or missing before, and why it mattered.
+- Why this approach over the obvious alternative, and what it trades away.
+- How the change was verified — this repo has no test suite, so the commit
+  message is where evidence lives. Prior commits record mutation checks and
+  hour-by-hour comparisons against the old implementation; match that bar for
+  anything touching the schedule.
+- What was deliberately left alone, when a reader would expect it to change.
+
+A one-line commit is fine when the subject genuinely says everything: a typo
+fix, a version bump, a rename.
+
+Reference a GitHub issue in a footer, not the subject: `Refs: #12`, or
+`Closes: #12` when the commit resolves it. There is currently no remote and no
+issue tracker, so omit this unless the user gives you an issue number.
+
+Never put a real `DISCORD_WEBHOOK_URL` in a commit message — see Secrets above.
