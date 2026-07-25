@@ -1,14 +1,10 @@
+import { FREE_GAMES_PAGE_URL } from "./constants.js";
+import type { FreeGame } from "./types.js";
+
 const FREE_GAMES_URL =
   "https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions";
 
 const STORE_BASE = "https://store.epicgames.com/en-US/p/";
-
-export interface FreeGame {
-  title: string;
-  url: string;
-  imageUrl: string | null;
-  endDate: string | null;
-}
 
 interface PromotionalOffer {
   startDate: string | null;
@@ -128,7 +124,7 @@ export async function fetchFreeGames(
 
     games.push({
       title: el.title,
-      url: slug ? `${STORE_BASE}${slug}` : "https://store.epicgames.com/en-US/free-games",
+      url: slug ? `${STORE_BASE}${slug}` : FREE_GAMES_PAGE_URL,
       imageUrl: pickImage(el),
       endDate: activeEndDate(el),
     });

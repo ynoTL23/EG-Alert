@@ -1,4 +1,5 @@
-import type { FreeGame } from "./epic.js";
+import { FREE_GAMES_PAGE_URL } from "./constants.js";
+import type { FreeGame } from "./types.js";
 
 const EPIC_BLUE = 0x2a2a2a;
 
@@ -20,7 +21,7 @@ export function buildEmbed(games: FreeGame[]) {
 
   return {
     title: "🕹️ This Week's Free Games on Epic",
-    url: "https://store.epicgames.com/en-US/free-games",
+    url: FREE_GAMES_PAGE_URL,
     description: lines.join("\n\n"),
     color: EPIC_BLUE,
     // A single hero image reads better than N thumbnails when there are
