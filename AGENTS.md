@@ -5,7 +5,7 @@ Guidance for AI agents working in this repository.
 ## What this is
 
 A single Cloudflare Worker that posts Epic Games Store's weekly free games to a
-Discord webhook on a cron trigger. It is intentionally small: three source files,
+Discord webhook on a cron trigger. It is intentionally small: four source files,
 no runtime dependencies, no framework, no tests.
 
 Keep it that way. This project does not need a router, a logger, a DI container,
@@ -28,7 +28,8 @@ that matters — run it before declaring work done.
 
 | File                | Responsibility                                        |
 | ------------------- | ----------------------------------------------------- |
-| `src/index.ts`      | Entrypoint: cron handler, schedule guard, manual trigger |
+| `src/index.ts`      | Entrypoint: cron handler, manual trigger, orchestration |
+| `src/schedule.ts`   | When to post; the Eastern wall-clock guard             |
 | `src/epic.ts`       | Fetch + filter Epic's promotions feed                  |
 | `src/discord.ts`    | Build the embed, POST to the webhook                   |
 | `wrangler.jsonc`    | Worker config and cron triggers                        |
@@ -36,13 +37,21 @@ that matters — run it before declaring work done.
 Keep fetching, formatting, and dispatch in their own files. `epic.ts` should not
 know Discord exists.
 
+`fetchFreeGames()` and `sendToDiscord()` each take a trailing `doFetch` argument
+defaulting to the global `fetch`. It exists so both can be exercised against
+recorded responses instead of the live network — pass it in tests, omit it
+everywhere else. Don't route it through a client object or a DI container.
+
 ## Things that will bite you
 
 **The two crons are deliberate — do not "simplify" them to one.**
 Cloudflare crons are UTC-only and UTC has no DST, so no single expression means
 "10:01 Eastern" year-round. `wrangler.jsonc` registers both `1 14 * * 4` and
-`1 15 * * 4`; `isEasternSendTime()` in `src/index.ts` discards whichever one is
-not 10:01 Eastern today. Removing either half breaks a stated requirement:
+`1 15 * * 4`; `shouldSendNow()` in `src/schedule.ts` discards whichever one is
+not 10:01 Eastern today. The constants at the top of that file are the source of
+truth for the send time, but the cron expressions must be updated by hand to
+match — nothing enforces the pairing. Removing either half breaks a stated
+requirement:
 drop a cron and it fires at the wrong time for half the year, drop the guard and
 it posts twice a week. See the README's schedule section.
 

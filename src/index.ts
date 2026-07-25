@@ -1,28 +1,9 @@
 import { fetchFreeGames } from "./epic.js";
 import { sendToDiscord } from "./discord.js";
+import { shouldSendNow } from "./schedule.js";
 
 export interface Env {
   DISCORD_WEBHOOK_URL: string;
-}
-
-/**
- * We register two UTC crons (14:01 and 15:01 Thursday) so that one of them
- * always lands on 10:01 Eastern regardless of daylight saving. This checks
- * the actual Eastern wall clock and lets only the correct one through, so
- * we never post twice.
- */
-function isEasternSendTime(date: Date): boolean {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hour: "numeric",
-    minute: "numeric",
-    weekday: "short",
-    hour12: false,
-  }).formatToParts(date);
-
-  const get = (type: string) => parts.find((p) => p.type === type)?.value;
-
-  return get("weekday") === "Thu" && get("hour") === "10";
 }
 
 async function run(env: Env, now: Date): Promise<Response> {
@@ -50,7 +31,7 @@ export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
     const now = new Date(event.scheduledTime);
 
-    if (!isEasternSendTime(now)) {
+    if (!shouldSendNow(now)) {
       console.log(
         `Skipping cron ${event.cron}: not 10:00 Eastern (DST guard).`,
       );

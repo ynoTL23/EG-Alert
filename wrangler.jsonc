@@ -11,7 +11,7 @@
     // "10:01 America/New_York" directly. We fire at BOTH candidate UTC
     // times (14:01 = EDT summer, 15:01 = EST winter) and let the worker
     // itself check the real Eastern wall-clock time, bailing out on the
-    // run that does not match. See isEasternSendTime() in src/index.ts.
+    // run that does not match. See shouldSendNow() in src/schedule.ts.
     "crons": ["1 14 * * 4", "1 15 * * 4"]
   }
 }

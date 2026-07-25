@@ -66,7 +66,7 @@ mean "10:01 Eastern" all year:
 | `1 15 * * 4`   | 11:01 AM            | **10:01 AM** ✅     |
 
 So the Worker registers **both**, guaranteeing that one of them always lands on
-10:01 Eastern. `isEasternSendTime()` in `src/index.ts` then checks the real
+10:01 Eastern. `shouldSendNow()` in `src/schedule.ts` then checks the real
 Eastern wall clock and lets only the correct one through — the other exits
 immediately without posting.
 
@@ -77,7 +77,8 @@ The discarded firing is a no-op that does nothing but check the clock and log.
 
 ```
 src/
-  index.ts     entrypoint — cron handler, schedule guard, manual trigger
+  index.ts     entrypoint — cron handler, manual trigger, orchestration
+  schedule.ts  when to post, and the Eastern wall-clock guard
   epic.ts      fetches and filters the Epic free-games feed
   discord.ts   builds the embed and posts it to the webhook
 wrangler.jsonc Worker config and cron triggers
