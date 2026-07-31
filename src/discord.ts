@@ -1,7 +1,11 @@
 import { FREE_GAMES_PAGE_URL } from "./constants.js";
+import { buildSlideshow } from "./webp.js";
 import type { FreeGame } from "./types.js";
 
 const EPIC_BLUE = 0x2a2a2a;
+
+/** Referenced by the embed via Discord's `attachment://` scheme. */
+const SLIDESHOW_FILENAME = "free-games.webp";
 
 function claimWindow(endDate: string | null): string | null {
   if (!endDate) return null;
@@ -11,7 +15,7 @@ function claimWindow(endDate: string | null): string | null {
   return `⏳ Free until <t:${ts}:F> (<t:${ts}:R>)`;
 }
 
-export function buildEmbed(games: FreeGame[]) {
+export function buildEmbed(games: FreeGame[], imageUrl: string | null) {
   const lines = games.map((game) => {
     const window = claimWindow(game.endDate);
     return window
@@ -24,11 +28,7 @@ export function buildEmbed(games: FreeGame[]) {
     url: FREE_GAMES_PAGE_URL,
     description: lines.join("\n\n"),
     color: EPIC_BLUE,
-    // A single hero image reads better than N thumbnails when there are
-    // multiple giveaways, so we only use one when there's exactly one game.
-    ...(games.length === 1 && games[0]?.imageUrl
-      ? { image: { url: games[0].imageUrl } }
-      : {}),
+    ...(imageUrl ? { image: { url: imageUrl } } : {}),
     footer: { text: "Epic Games Store • Free every Thursday" },
     timestamp: new Date().toISOString(),
   };
@@ -40,11 +40,32 @@ export async function sendToDiscord(
   games: FreeGame[],
   doFetch: typeof fetch = fetch,
 ): Promise<void> {
-  const res = await doFetch(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ embeds: [buildEmbed(games)] }),
-  });
+  const slideshow = await buildSlideshow(games, doFetch);
+
+  // Upload the animation with the message rather than hotlinking it: Discord
+  // then hosts it, so there is no third-party URL to expire or rate-limit.
+  //
+  // Without one — a lone free game, or a failed build — the embed points at the
+  // first game's art on Epic's CDN. Nothing is uploaded in that case.
+  const embed = buildEmbed(
+    games,
+    slideshow
+      ? `attachment://${SLIDESHOW_FILENAME}`
+      : (games[0]?.imageUrl ?? null),
+  );
+
+  const form = new FormData();
+  form.append("payload_json", JSON.stringify({ embeds: [embed] }));
+  if (slideshow) {
+    form.append(
+      "files[0]",
+      new Blob([slideshow], { type: "image/webp" }),
+      SLIDESHOW_FILENAME,
+    );
+  }
+
+  // No Content-Type header: fetch sets it, with the multipart boundary.
+  const res = await doFetch(webhookUrl, { method: "POST", body: form });
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "<no body>");

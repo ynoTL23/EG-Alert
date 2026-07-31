@@ -2,6 +2,7 @@
 export interface FreeGame {
   title: string;
   url: string;
+  /** 16:9 key art, one slideshow frame per game. */
   imageUrl: string | null;
   endDate: string | null;
 }

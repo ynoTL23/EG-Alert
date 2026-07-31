@@ -5,12 +5,12 @@ Guidance for AI agents working in this repository.
 ## What this is
 
 A single Cloudflare Worker that posts Epic Games Store's weekly free games to a
-Discord webhook on a cron trigger. It is intentionally small: four source files,
-no runtime dependencies, no framework, no tests.
+Discord webhook on a cron trigger. Six source files, no npm dependencies at
+runtime, no framework, no tests. It does call three services: Epic's promotions
+API, wsrv.nl (image transcoding), and the Discord webhook.
 
-Keep it that way. This project does not need a router, a logger, a DI container,
-or an HTTP client library. If a change seems to call for one, it is probably the
-wrong change.
+This project does not need a router, a logger, a DI container, or an HTTP client
+library. If a change seems to call for one, it is probably the wrong change.
 
 ## Commands
 
@@ -56,6 +56,7 @@ re-enabling either.
 | `src/schedule.ts`        | When to post; the Eastern wall-clock guard              |
 | `src/epic.ts`            | Fetch + filter Epic's promotions feed                   |
 | `src/discord.ts`         | Build the embed, POST to the webhook                    |
+| `src/webp.ts`            | Build the animated WebP attached to the embed           |
 | `src/constants.ts`       | Values used by more than one module                     |
 | `src/types.ts`           | Types used by more than one module                      |
 | `scripts/check-crons.ts` | Asserts the crons match the send time                   |
@@ -69,7 +70,7 @@ the send time, the free-games page URL, and `FreeGame`. A constant or type used
 in one file stays in that file. Don't turn either into a dumping ground, and
 don't add barrel files.
 
-`fetchFreeGames()` and `sendToDiscord()` each take a trailing `doFetch` argument
+`fetchFreeGames()`, `sendToDiscord()` and `buildSlideshow()` each take a trailing `doFetch` argument
 defaulting to the global `fetch`. It exists so both can be exercised against
 recorded responses instead of the live network — pass it in tests, omit it
 everywhere else. Don't route it through a client object or a DI container.
@@ -89,6 +90,34 @@ truth for the send time. The cron expressions still have to be edited by hand �
 Wrangler config is static JSON and can't import them — but `npm run check:crons`
 now fails when the two disagree and prints the expressions you should have. If
 you change the send time, change both and run it.
+
+**The Worker must never decode an image.**
+`src/webp.ts` builds the embed's animation by splicing already-encoded WebP
+bytes: Epic's CDN resizes, wsrv.nl transcodes, and the Worker only writes RIFF
+headers. This is not a stylistic choice. A cron trigger on the free plan gets
+**10ms of CPU**, and decoding one JPEG costs 100-300ms. `fetch()` time does not
+count toward that budget, which is the only reason this fits. Any change that
+decodes, composites, or re-encodes pixels in the Worker will blow the limit.
+
+This rules out a collage. Combining pictures into one frame means writing pixels,
+and nothing in the pipeline will do that for us — wsrv.nl transforms one image
+per request, and its `overlay`/`mask`/`composite` parameters are silently
+ignored. A grid built the only way that _is_ affordable — one frame per tile,
+each at its own offset — was tried and reverted: clients with autoplay disabled
+render frame 0 and stop, so viewers saw a single tile against black. Hence one
+frame per game, each a complete picture.
+
+**Every frame must stand alone.**
+GIF/WebP autoplay is a client-side accessibility setting that the API cannot
+override, so assume a good share of viewers only ever see frame 0. A frame that
+only makes sense after the ones before it is a frame most people never see.
+
+**Epic image URLs need `resize=1`.**
+`?w=480` alone is silently ignored — the request falls through to S3 and returns
+the full multi-megabyte original. `?resize=1&w=480` hits Akamai and returns a
+resized image. `w`+`h` is a bounding box, not a crop, so an aspect ratio that
+disagrees with the source comes back the wrong size. `heroCarouselVideo` entries
+in `keyImages` carry a `com.epicgames.video://` URL rather than an image.
 
 **`discountPercentage: 0` means free, not "no discount".**
 It is the _resulting_ percentage. The code checks

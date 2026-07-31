@@ -76,15 +76,25 @@ function activeEndDate(el: Element): string | null {
   return null;
 }
 
-function pickImage(el: Element): string | null {
-  const images = el.keyImages ?? [];
-  const preferred = ["OfferImageWide", "DieselStoreFrontWide", "Thumbnail"];
+/**
+ * `keyImages` includes `heroCarouselVideo` entries whose "url" is a
+ * `com.epicgames.video://` scheme, not an image. They would 404 in an embed and
+ * break anything that resizes them, so only real http(s) URLs qualify.
+ */
+function pickImage(el: Element, preferred: readonly string[]): string | null {
+  const images = (el.keyImages ?? []).filter((img) =>
+    img?.url?.startsWith("https://"),
+  );
   for (const type of preferred) {
-    const hit = images.find((img) => img?.type === type && img.url);
+    const hit = images.find((img) => img?.type === type);
     if (hit?.url) return hit.url;
   }
-  return images.find((img) => img?.url)?.url ?? null;
+  return images[0]?.url ?? null;
 }
+
+// Widest-first: the slideshow's frames are 16:9, and `Thumbnail` is portrait,
+// so it only earns its place as a last resort.
+const IMAGE_TYPES = ["OfferImageWide", "OgImage", "Thumbnail"] as const;
 
 /**
  * `doFetch` defaults to the global, so callers never have to pass it. It
@@ -127,7 +137,7 @@ export async function fetchFreeGames(
     games.push({
       title: el.title,
       url: slug ? `${STORE_BASE}${slug}` : FREE_GAMES_PAGE_URL,
-      imageUrl: pickImage(el),
+      imageUrl: pickImage(el, IMAGE_TYPES),
       endDate: activeEndDate(el),
     });
   }

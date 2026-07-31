@@ -13,6 +13,9 @@ webhook.
    are _actually free right now_.
 3. It posts a single embed to your Discord webhook with each game's title, a link
    to its store page, and a countdown to when the giveaway ends.
+4. When there is more than one game, it attaches an animated WebP that loops
+   through their key art, a second per game. A lone game gets its picture linked
+   straight from Epic's CDN instead — there is nothing to animate.
 
 ## Setup
 
@@ -87,6 +90,7 @@ src/
   schedule.ts   when to post, and the Eastern wall-clock guard
   epic.ts       fetches and filters the Epic free-games feed
   discord.ts    builds the embed and posts it to the webhook
+  webp.ts       builds the looping WebP attached to the embed
   constants.ts  values shared by more than one module (send time, store URL)
   types.ts      shared types (FreeGame)
 scripts/
@@ -106,3 +110,10 @@ wrangler.jsonc  Worker config and cron triggers
   than "no discount". The price is checked directly instead.
 - If Epic lists no free games, the Worker logs and posts nothing rather than
   sending an empty embed.
+- The animation is assembled without decoding anything: Epic's CDN resizes each
+  picture, [wsrv.nl](https://wsrv.nl) transcodes it to WebP, and the Worker only
+  writes the container headers around the frames. A Worker gets very little CPU
+  per cron run, and decoding a JPEG would spend it several times over. If
+  wsrv.nl is unreachable the post still goes out, just without the animation.
+- Epic's image URLs need `?resize=1` for the other parameters to do anything.
+  `?w=480` on its own is ignored and returns the multi-megabyte original.
