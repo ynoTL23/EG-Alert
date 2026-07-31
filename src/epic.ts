@@ -12,12 +12,37 @@ interface PromotionalOffer {
   discountSetting?: { discountPercentage?: number | null } | null;
 }
 
+/**
+ * The `keyImages` types seen in the live feed. `heroCarouselVideo` is the odd
+ * one out: its "url" is a `com.epicgames.video://` reference rather than an
+ * image, which is why `pickImage()` filters on the scheme.
+ *
+ * `(string & {})` keeps the union open — Epic adds and retires types without
+ * warning (`DieselStoreFrontWide` used to be here and is now gone), and an
+ * unrecognised one should not fail the build. The named members still
+ * autocomplete and still catch typos in the lists below.
+ */
+type KeyImageType =
+  | "OfferImageWide"
+  | "OfferImageTall"
+  | "Thumbnail"
+  | "featuredMedia"
+  | "heroCarouselVideo"
+  | "OgImage"
+  | (string & {});
+
+interface KeyImage {
+  type?: KeyImageType | null;
+  /** Points at an image file, except on `heroCarouselVideo`. */
+  url?: string | null;
+}
+
 interface Element {
   title?: string | null;
   productSlug?: string | null;
   urlSlug?: string | null;
   offerType?: string | null;
-  keyImages?: Array<{ type?: string | null; url?: string | null }> | null;
+  keyImages?: KeyImage[] | null;
   price?: {
     totalPrice?: { discountPrice?: number | null } | null;
   } | null;
@@ -81,7 +106,10 @@ function activeEndDate(el: Element): string | null {
  * `com.epicgames.video://` scheme, not an image. They would 404 in an embed and
  * break anything that resizes them, so only real http(s) URLs qualify.
  */
-function pickImage(el: Element, preferred: readonly string[]): string | null {
+function pickImage(
+  el: Element,
+  preferred: readonly KeyImageType[],
+): string | null {
   const images = (el.keyImages ?? []).filter((img) =>
     img?.url?.startsWith("https://"),
   );
@@ -94,7 +122,11 @@ function pickImage(el: Element, preferred: readonly string[]): string | null {
 
 // Widest-first: the slideshow's frames are 16:9, and `Thumbnail` is portrait,
 // so it only earns its place as a last resort.
-const IMAGE_TYPES = ["OfferImageWide", "OgImage", "Thumbnail"] as const;
+const IMAGE_TYPES: readonly KeyImageType[] = [
+  "OfferImageWide",
+  "OgImage",
+  "Thumbnail",
+];
 
 /**
  * `doFetch` defaults to the global, so callers never have to pass it. It
