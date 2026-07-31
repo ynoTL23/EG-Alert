@@ -169,7 +169,9 @@ The commit message convention lives in the global `CLAUDE.md`. Repo specifics:
   evidence lives. Prior commits record mutation checks and hour-by-hour
   comparisons against the old implementation; match that bar for anything
   touching the schedule.
-- There is no remote and no issue tracker, so omit issue footers unless the
-  user gives you an issue number.
+- `origin` is a private GitHub repo (`ynoTL23/EG-Alert`) with issues enabled.
+  Reference one in a footer — `Refs: #12`, or `Closes: #12` — when the commit
+  resolves it; omit the footer when there is no issue, and never invent a
+  number. Push only when asked.
 - Never put a real `DISCORD_WEBHOOK_URL` in a commit message — see Secrets
   above.
