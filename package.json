@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --test-scheduled",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "check:crons": "node --experimental-strip-types scripts/check-crons.ts",
@@ -13,7 +13,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run typecheck && npm run check:crons && npm run lint && npm run format:check",
-    "trigger": "curl \"http://localhost:8787/__scheduled?cron=1+14+*+*+4\"",
+    "trigger": "curl \"http://localhost:8787/__scheduled?cron=1+14+*+*+THU\"",
     "secrets": "wrangler secret put DISCORD_WEBHOOK_URL"
   },
   "devDependencies": {

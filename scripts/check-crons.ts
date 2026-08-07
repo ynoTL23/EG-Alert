@@ -18,8 +18,39 @@ import { SEND_HOUR, SEND_WEEKDAY, SEND_ZONE } from "../src/constants.ts";
 // @types/node declare incompatible URL types, and this sidesteps the clash.
 const CONFIG_PATH = join(dirname(import.meta.dirname), "wrangler.jsonc");
 
-/** Cron day-of-week is 0-6 with 0 = Sunday, which is what Date.getUTCDay() returns. */
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/**
+ * Cloudflare follows Quartz, where day-of-week is 1-7 with 1 = Sunday — not the
+ * 0 = Sunday convention of standard cron. Index 0 is left unused so a value
+ * indexes directly: WEEKDAYS[5] === "Thu". Date.getUTCDay() returns the 0-based
+ * form, so converting to a cron field means adding 1.
+ *
+ * Getting this wrong is not loud: "* * 4" is a valid expression that fires on
+ * Wednesday, one day before the intended Thursday.
+ */
+const WEEKDAYS = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** The cron day-of-week field for a Date, in Quartz's 1 = Sunday numbering. */
+function quartzDay(date: Date): number {
+  return date.getUTCDay() + 1;
+}
+
+/**
+ * Parses a day-of-week field, accepting both Quartz numbers and the
+ * case-insensitive 3-letter abbreviations the Cloudflare docs recommend.
+ * Returns null if the field is neither.
+ */
+function parseWeekday(field: string): number | null {
+  const abbreviation = WEEKDAYS.findIndex(
+    (day) => day !== "" && day.toLowerCase() === field.toLowerCase(),
+  );
+  if (abbreviation !== -1) {
+    return abbreviation;
+  }
+  const numeric = Number(field);
+  return Number.isInteger(numeric) && numeric >= 1 && numeric <= 7
+    ? numeric
+    : null;
+}
 
 /**
  * The two UTC hours that can mean SEND_HOUR local time — one for each side of
@@ -56,7 +87,7 @@ function expectedFirings(): { hour: number; weekday: string }[] {
       }
       // The UTC weekday can differ from the local one (e.g. a late-evening local
       // send rolls over midnight UTC), so take the day the cron actually needs.
-      const weekday = WEEKDAYS[candidate.getUTCDay()]!;
+      const weekday = WEEKDAYS[quartzDay(candidate)]!;
       firings.set(`${candidate.getUTCHours()} ${weekday}`, {
         hour: candidate.getUTCHours(),
         weekday,
@@ -114,10 +145,16 @@ for (const cron of crons) {
     problems.push(`"${cron}": day-of-month and month must both be "*"`);
   }
 
+  const day = parseWeekday(dayOfWeek);
+  if (day === null) {
+    problems.push(
+      `"${cron}": day-of-week "${dayOfWeek}" is not 1-7 or a 3-letter abbreviation`,
+    );
+    continue;
+  }
+
   const match = expected.find(
-    (e) =>
-      String(e.hour) === hour &&
-      WEEKDAYS.indexOf(e.weekday) === Number(dayOfWeek),
+    (e) => String(e.hour) === hour && WEEKDAYS.indexOf(e.weekday) === day,
   );
   if (!match) {
     problems.push(
@@ -130,7 +167,7 @@ for (const { hour, weekday } of expected) {
   const day = WEEKDAYS.indexOf(weekday);
   const covered = crons.some((cron) => {
     const [, h, , , d] = cron.trim().split(/\s+/);
-    return h === String(hour) && Number(d) === day;
+    return h === String(hour) && d !== undefined && parseWeekday(d) === day;
   });
   if (!covered) {
     problems.push(
@@ -151,7 +188,7 @@ if (problems.length > 0) {
       problems.map((p) => `  - ${p}`).join("\n") +
       `\n\nExpected UTC firings for ${SEND_HOUR}:00 ${SEND_WEEKDAY} ${SEND_ZONE}:\n` +
       expected
-        .map((e) => `  - "M ${e.hour} * * ${WEEKDAYS.indexOf(e.weekday)}"`)
+        .map((e) => `  - "M ${e.hour} * * ${e.weekday.toUpperCase()}"`)
         .join("\n") +
       `\n(M = any minute, consistent across expressions)\n`,
   );

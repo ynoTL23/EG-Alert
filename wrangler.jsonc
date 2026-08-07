@@ -12,6 +12,10 @@
     // times (14:01 = EDT summer, 15:01 = EST winter) and let the worker
     // itself check the real Eastern wall-clock time, bailing out on the
     // run that does not match. See shouldSendNow() in src/schedule.ts.
-    "crons": ["1 14 * * 4", "1 15 * * 4"]
+    //
+    // The weekday is spelled "THU", not a number: Cloudflare follows Quartz,
+    // where 1 = Sunday and Thursday is 5 — not the 0 = Sunday convention most
+    // cron systems use. "* * 4" here silently means Wednesday.
+    "crons": ["1 14 * * THU", "1 15 * * THU"]
   }
 }

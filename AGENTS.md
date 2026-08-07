@@ -79,11 +79,18 @@ everywhere else. Don't route it through a client object or a DI container.
 
 **The two crons are deliberate — do not "simplify" them to one.**
 Cloudflare crons are UTC-only and UTC has no DST, so no single expression means
-"10:01 Eastern" year-round. `wrangler.jsonc` registers both `1 14 * * 4` and
-`1 15 * * 4`; `shouldSendNow()` in `src/schedule.ts` discards whichever one is
+"10:01 Eastern" year-round. `wrangler.jsonc` registers both `1 14 * * THU` and
+`1 15 * * THU`; `shouldSendNow()` in `src/schedule.ts` discards whichever one is
 not 10:01 Eastern today. Removing either half breaks a stated requirement: drop a
 cron and it fires at the wrong time for half the year, drop the guard and it
 posts twice a week. See the README's schedule section.
+
+**Write the cron weekday as `THU`, never as a number.** Cloudflare follows
+Quartz numbering, where 1 = Sunday and Thursday is `5` — not the 0 = Sunday
+convention most cron systems use. This shipped as `1 14 * * 4` for two weeks,
+which is a perfectly valid expression that fires on **Wednesday**; the worker
+woke a day early every time and only the guard kept it from posting.
+`check-crons.ts` understands both forms but the abbreviation is unambiguous.
 
 `SEND_ZONE`/`SEND_WEEKDAY`/`SEND_HOUR` in `src/constants.ts` are the source of
 truth for the send time. The cron expressions still have to be edited by hand —

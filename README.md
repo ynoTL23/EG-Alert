@@ -40,9 +40,14 @@ deliberately skips the schedule guard described below.
 To exercise the real cron path instead:
 
 ```sh
-npx wrangler dev --test-scheduled
-curl "http://localhost:8787/cdn-cgi/handler/scheduled?cron=1+14+*+*+4"
+npm run dev      # passes --test-scheduled, without which /__scheduled
+                 # falls through to the fetch handler and skips the guard
+npm run trigger
 ```
+
+Note that the scheduled event's time is the current wall clock, not a time
+derived from the `cron=` parameter, so outside the real Thursday 10:00 Eastern
+window the guard will log that it skipped rather than post.
 
 ## Deploying
 
@@ -63,15 +68,22 @@ Cloudflare cron triggers **run on UTC only** — there is no timezone option, an
 UTC does not observe daylight saving. A single cron expression therefore cannot
 mean "10:01 Eastern" all year:
 
-| Cron (UTC)   | Summer (EDT, UTC-4) | Winter (EST, UTC-5) |
-| ------------ | ------------------- | ------------------- |
-| `1 14 * * 4` | **10:01 AM** ✅     | 9:01 AM             |
-| `1 15 * * 4` | 11:01 AM            | **10:01 AM** ✅     |
+| Cron (UTC)     | Summer (EDT, UTC-4) | Winter (EST, UTC-5) |
+| -------------- | ------------------- | ------------------- |
+| `1 14 * * THU` | **10:01 AM** ✅     | 9:01 AM             |
+| `1 15 * * THU` | 11:01 AM            | **10:01 AM** ✅     |
 
 So the Worker registers **both**, guaranteeing that one of them always lands on
 10:01 Eastern. `shouldSendNow()` in `src/schedule.ts` then checks the real
 Eastern wall clock and lets only the correct one through — the other exits
 immediately without posting.
+
+The weekday is written `THU` rather than a number on purpose. Cloudflare follows
+[Quartz](https://developers.cloudflare.com/workers/configuration/cron-triggers/#supported-cron-expressions)
+numbering, where **1 = Sunday** and Thursday is `5` — not the `0 = Sunday`
+convention most cron systems use. Writing `4` is not an error; it is a valid
+expression that fires on **Wednesday**, so the post goes out a day early and
+only the schedule guard stops it.
 
 The net effect is exactly one Discord post per week, always at 10:01 AM Eastern.
 The discarded firing is a no-op that does nothing but check the clock and log.
