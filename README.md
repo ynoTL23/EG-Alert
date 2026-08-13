@@ -1,7 +1,7 @@
 # EG Alert
 
 A tiny Cloudflare Worker that posts the Epic Games Store's weekly free games to a
-Discord channel every Thursday at 10:01 AM Eastern.
+Discord channel every Thursday at 11:01 AM Eastern.
 
 No dependencies at runtime — just `fetch`, the Epic promotions API, and a Discord
 webhook.
@@ -46,7 +46,7 @@ npm run trigger
 ```
 
 Note that the scheduled event's time is the current wall clock, not a time
-derived from the `cron=` parameter, so outside the real Thursday 10:00 Eastern
+derived from the `cron=` parameter, so outside the real Thursday 11:00 Eastern
 window the guard will log that it skipped rather than post.
 
 ## Deploying
@@ -66,15 +66,15 @@ network after a deploy.
 
 Cloudflare cron triggers **run on UTC only** — there is no timezone option, and
 UTC does not observe daylight saving. A single cron expression therefore cannot
-mean "10:01 Eastern" all year:
+mean "11:01 Eastern" all year:
 
 | Cron (UTC)     | Summer (EDT, UTC-4) | Winter (EST, UTC-5) |
 | -------------- | ------------------- | ------------------- |
-| `1 14 * * THU` | **10:01 AM** ✅     | 9:01 AM             |
-| `1 15 * * THU` | 11:01 AM            | **10:01 AM** ✅     |
+| `1 15 * * THU` | **11:01 AM** ✅     | 10:01 AM            |
+| `1 16 * * THU` | 12:01 PM            | **11:01 AM** ✅     |
 
 So the Worker registers **both**, guaranteeing that one of them always lands on
-10:01 Eastern. `shouldSendNow()` in `src/schedule.ts` then checks the real
+11:01 Eastern. `shouldSendNow()` in `src/schedule.ts` then checks the real
 Eastern wall clock and lets only the correct one through — the other exits
 immediately without posting.
 
@@ -85,7 +85,7 @@ convention most cron systems use. Writing `4` is not an error; it is a valid
 expression that fires on **Wednesday**, so the post goes out a day early and
 only the schedule guard stops it.
 
-The net effect is exactly one Discord post per week, always at 10:01 AM Eastern.
+The net effect is exactly one Discord post per week, always at 11:01 AM Eastern.
 The discarded firing is a no-op that does nothing but check the clock and log.
 
 The send time lives in `src/constants.ts` (`SEND_ZONE`, `SEND_WEEKDAY`,

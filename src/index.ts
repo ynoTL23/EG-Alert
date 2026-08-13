@@ -33,7 +33,7 @@ export default {
 
     if (!shouldSendNow(now)) {
       console.log(
-        `Skipping cron ${event.cron}: not 10:00 Eastern (DST guard).`,
+        `Skipping cron ${event.cron}: not 11:00 Eastern (DST guard).`,
       );
       return;
     }

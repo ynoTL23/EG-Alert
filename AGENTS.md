@@ -79,9 +79,9 @@ everywhere else. Don't route it through a client object or a DI container.
 
 **The two crons are deliberate — do not "simplify" them to one.**
 Cloudflare crons are UTC-only and UTC has no DST, so no single expression means
-"10:01 Eastern" year-round. `wrangler.jsonc` registers both `1 14 * * THU` and
-`1 15 * * THU`; `shouldSendNow()` in `src/schedule.ts` discards whichever one is
-not 10:01 Eastern today. Removing either half breaks a stated requirement: drop a
+"11:01 Eastern" year-round. `wrangler.jsonc` registers both `1 15 * * THU` and
+`1 16 * * THU`; `shouldSendNow()` in `src/schedule.ts` discards whichever one is
+not 11:01 Eastern today. Removing either half breaks a stated requirement: drop a
 cron and it fires at the wrong time for half the year, drop the guard and it
 posts twice a week. See the README's schedule section.
 
