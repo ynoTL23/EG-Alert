@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "eg-alert",
   "main": "src/index.ts",
-  "compatibility_date": "2025-01-15",
+  "compatibility_date": "2026-08-13",
   "observability": {
     "enabled": true
   },
