@@ -7,13 +7,12 @@
     "dev": "wrangler dev --test-scheduled",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "check:crons": "node --experimental-strip-types scripts/check-crons.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run typecheck && npm run check:crons && npm run lint && npm run format:check",
-    "trigger": "curl \"http://localhost:8787/__scheduled?cron=1+15+*+*+THU\"",
+    "check": "npm run typecheck && npm run lint && npm run format:check",
+    "trigger": "curl \"http://localhost:8787/__scheduled?cron=1+16+*+*+THU\"",
     "secrets": "wrangler secret put DISCORD_WEBHOOK_URL"
   },
   "devDependencies": {

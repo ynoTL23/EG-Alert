@@ -5,7 +5,7 @@ Guidance for AI agents working in this repository.
 ## What this is
 
 A single Cloudflare Worker that posts Epic Games Store's weekly free games to a
-Discord webhook on a cron trigger. Six source files, no npm dependencies at
+Discord webhook on a cron trigger. Five source files, no npm dependencies at
 runtime, no framework, no tests. It does call three services: Epic's promotions
 API, wsrv.nl (image transcoding), and the Discord webhook.
 
@@ -16,9 +16,8 @@ library. If a change seems to call for one, it is probably the wrong change.
 
 ```sh
 npm run dev           # local server; GET / runs the job immediately
-npm run check         # typecheck + crons + lint + format — run after any edit
+npm run check         # typecheck + lint + format — run after any edit
 npm run typecheck     # tsc --noEmit
-npm run check:crons   # assert wrangler.jsonc crons match SEND_* in constants.ts
 npm run lint          # eslint (type-aware)
 npm run lint:fix      # eslint --fix
 npm run format        # prettier --write
@@ -50,23 +49,21 @@ re-enabling either.
 
 ## Layout
 
-| File                     | Responsibility                                          |
-| ------------------------ | ------------------------------------------------------- |
-| `src/index.ts`           | Entrypoint: cron handler, manual trigger, orchestration |
-| `src/schedule.ts`        | When to post; the Eastern wall-clock guard              |
-| `src/epic.ts`            | Fetch + filter Epic's promotions feed                   |
-| `src/discord.ts`         | Build the embed, POST to the webhook                    |
-| `src/webp.ts`            | Build the animated WebP attached to the embed           |
-| `src/constants.ts`       | Values used by more than one module                     |
-| `src/types.ts`           | Types used by more than one module                      |
-| `scripts/check-crons.ts` | Asserts the crons match the send time                   |
-| `wrangler.jsonc`         | Worker config and cron triggers                         |
+| File               | Responsibility                                          |
+| ------------------ | ------------------------------------------------------- |
+| `src/index.ts`     | Entrypoint: cron handler, manual trigger, orchestration |
+| `src/epic.ts`      | Fetch + filter Epic's promotions feed                   |
+| `src/discord.ts`   | Build the embed, POST to the webhook                    |
+| `src/webp.ts`      | Build the animated WebP attached to the embed           |
+| `src/constants.ts` | Values used by more than one module                     |
+| `src/types.ts`     | Types used by more than one module                      |
+| `wrangler.jsonc`   | Worker config and cron triggers                         |
 
 Keep fetching, formatting, and dispatch in their own files. `epic.ts` should not
 know Discord exists.
 
 `constants.ts` and `types.ts` are for genuinely shared values only — currently
-the send time, the free-games page URL, and `FreeGame`. A constant or type used
+the free-games page URL and `FreeGame`. A constant or type used
 in one file stays in that file. Don't turn either into a dumping ground, and
 don't add barrel files.
 
@@ -77,26 +74,42 @@ everywhere else. Don't route it through a client object or a DI container.
 
 ## Things that will bite you
 
-**The two crons are deliberate — do not "simplify" them to one.**
-Cloudflare crons are UTC-only and UTC has no DST, so no single expression means
-"11:01 Eastern" year-round. `wrangler.jsonc` registers both `1 15 * * THU` and
-`1 16 * * THU`; `shouldSendNow()` in `src/schedule.ts` discards whichever one is
-not 11:01 Eastern today. Removing either half breaks a stated requirement: drop a
-cron and it fires at the wrong time for half the year, drop the guard and it
-posts twice a week. See the README's schedule section.
+**One cron, no schedule guard — this is deliberate.** `wrangler.jsonc` registers
+exactly `1 16 * * THU`, which is 12:01 PM Eastern in summer and 11:01 AM in
+winter. The hour of DST drift is accepted on purpose: Epic rotates the free
+games around 11:00 AM Eastern, so aiming at midday clears the rotation on both
+sides of the year.
+
+Do not "fix" the drift by adding a second cron and a wall-clock guard. That is
+what this repo used to do — two crons (`1 15`, `1 16`) plus `shouldSendNow()` in
+a `src/schedule.ts` that no longer exists — and it was removed on purpose once
+the send time moved to midday. Pinning the post to an exact local minute is not
+a requirement; landing safely after Epic's rotation is.
+
+The failure that motivated this: on 2026-09-03 the 15:01 UTC firing passed the
+old guard correctly (it really was 11:01 EDT), fetched Epic, and got an empty
+promotions feed — the rotation had not happened yet. The guard was working; the
+send time was simply too early.
 
 **Write the cron weekday as `THU`, never as a number.** Cloudflare follows
 Quartz numbering, where 1 = Sunday and Thursday is `5` — not the 0 = Sunday
 convention most cron systems use. This shipped as `1 14 * * 4` for two weeks,
-which is a perfectly valid expression that fires on **Wednesday**; the worker
-woke a day early every time and only the guard kept it from posting.
-`check-crons.ts` understands both forms but the abbreviation is unambiguous.
+which is a perfectly valid expression that fires on **Wednesday**. Nothing
+validates the crons any more, so check this by hand when editing them.
 
-`SEND_ZONE`/`SEND_WEEKDAY`/`SEND_HOUR` in `src/constants.ts` are the source of
-truth for the send time. The cron expressions still have to be edited by hand —
-Wrangler config is static JSON and can't import them — but `npm run check:crons`
-now fails when the two disagree and prints the expressions you should have. If
-you change the send time, change both and run it.
+**Don't lower `compatibility_date` to make `npm run dev` start.** If the date in
+`wrangler.jsonc` is newer than the runtime bundled with the installed Wrangler,
+the local server refuses to boot:
+
+```
+This Worker requires compatibility date "2026-08-13", but the newest date
+supported by this server binary is "2026-07-29".
+```
+
+Upgrade Wrangler instead (`npm i -D wrangler@latest`). The date reflects the
+runtime behaviour the Worker is written against; walking it backwards to satisfy
+a stale local binary changes semantics to fix a tooling problem. Deploys are not
+affected — Cloudflare's edge runtime is always current.
 
 **The Worker must never decode an image.**
 `src/webp.ts` builds the embed's animation by splicing already-encoded WebP

@@ -1,6 +1,5 @@
 import { fetchFreeGames } from "./epic.js";
 import { sendToDiscord } from "./discord.js";
-import { shouldSendNow } from "./schedule.js";
 
 export interface Env {
   DISCORD_WEBHOOK_URL: string;
@@ -31,13 +30,6 @@ export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
     const now = new Date(event.scheduledTime);
 
-    if (!shouldSendNow(now)) {
-      console.log(
-        `Skipping cron ${event.cron}: not 11:00 Eastern (DST guard).`,
-      );
-      return;
-    }
-
     ctx.waitUntil(
       run(env, now).catch((err) => {
         console.error("Scheduled run failed:", err);
@@ -48,7 +40,7 @@ export default {
 
   /**
    * Manual trigger for testing — visit the worker URL to force a post
-   * without waiting for Thursday. The DST guard is deliberately skipped here.
+   * without waiting for Thursday.
    */
   async fetch(_req: Request, env: Env): Promise<Response> {
     try {
