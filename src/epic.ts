@@ -39,6 +39,8 @@ interface KeyImage {
 
 interface Element {
   title?: string | null;
+  id?: string | null;
+  namespace?: string | null;
   productSlug?: string | null;
   urlSlug?: string | null;
   offerType?: string | null;
@@ -99,6 +101,16 @@ function activeEndDate(el: Element): string | null {
     }
   }
   return null;
+}
+
+/**
+ * The storefront's cart is addressed by `1-<namespace>-<id>` fragments. Both
+ * ids are required, and Epic leaves them off some entries, so this is null
+ * rather than a half-built fragment.
+ */
+function offerFragment(el: Element): string | null {
+  if (!el.namespace || !el.id) return null;
+  return `1-${el.namespace}-${el.id}`;
 }
 
 /**
@@ -169,6 +181,7 @@ export async function fetchFreeGames(
     games.push({
       title: el.title,
       url: slug ? `${STORE_BASE}${slug}` : FREE_GAMES_PAGE_URL,
+      offer: offerFragment(el),
       imageUrl: pickImage(el, IMAGE_TYPES),
       endDate: activeEndDate(el),
     });

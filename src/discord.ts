@@ -7,6 +7,15 @@ const EPIC_BLUE = 0x2a2a2a;
 /** Referenced by the embed via Discord's `attachment://` scheme. */
 const SLIDESHOW_FILENAME = "free-games.webp";
 
+/**
+ * Epic's cart takes one `offers` param per game, so several games claimed
+ * together repeat the key: `?offers=1-a-b&offers=1-c-d`.
+ */
+function purchaseUrl(offers: readonly string[]): string {
+  const params = offers.map((o) => `offers=${o}`).join("&");
+  return `https://store.epicgames.com/purchase?${params}`;
+}
+
 function claimWindow(endDate: string | null): string | null {
   if (!endDate) return null;
   const ts = Math.floor(new Date(endDate).getTime() / 1000);
@@ -17,11 +26,26 @@ function claimWindow(endDate: string | null): string | null {
 
 export function buildEmbed(games: FreeGame[], imageUrl: string | null) {
   const lines = games.map((game) => {
+    const parts = [`🎮 **[${game.title}](${game.url})**`];
+
     const window = claimWindow(game.endDate);
-    return window
-      ? `🎮 **[${game.title}](${game.url})**\n${window}`
-      : `🎮 **[${game.title}](${game.url})**`;
+    if (window) parts.push(window);
+
+    // Drops the game straight into the cart, so claiming is one click from
+    // Discord instead of a storefront detour.
+    if (game.offer) {
+      parts.push(`🛒 [Instant Claim](${purchaseUrl([game.offer])})`);
+    }
+
+    return parts.join("\n");
   });
+
+  // A cart holding every game at once. Pointless when there is only one — it
+  // would just repeat the link directly above it.
+  const offers = games.map((game) => game.offer).filter((o) => o !== null);
+  if (offers.length > 1) {
+    lines.push(`🛒 **[Instant Claim All](${purchaseUrl(offers)})**`);
+  }
 
   return {
     title: "🕹️ This Week's Free Games on Epic",
