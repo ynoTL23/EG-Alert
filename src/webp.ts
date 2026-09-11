@@ -47,21 +47,46 @@ function uint24(value: number): Uint8Array {
 }
 
 /**
- * Pulls the compressed bitstream out of a simple-format WebP and re-wraps it as
- * a chunk we can drop inside an ANMF frame. The pixel data is copied verbatim —
- * this is a byte move, not a re-encode.
+ * Pulls the compressed bitstream out of a WebP and re-wraps it as chunks we can
+ * drop inside an ANMF frame. The pixel data is copied verbatim — this is a byte
+ * move, not a re-encode.
+ *
+ * The bitstream is not at a fixed offset. A tile whose source has transparency
+ * comes back extended-format — `VP8X`, then `ALPH`, then `VP8 ` — so anything
+ * that assumes the simple-format layout reads the container header as pixels and
+ * produces a frame no decoder will render. Walk the chunks instead, and keep
+ * `ALPH` with the frame it belongs to: an ANMF holding `VP8 ` without its alpha
+ * loses transparency.
  */
 function bitstreamChunk(file: Uint8Array): Uint8Array {
   const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
-  const fourcc = new TextDecoder().decode(file.subarray(12, 16));
-  const size = view.getUint32(16, true);
-  const payload = file.subarray(20, 20 + size);
+  const decoder = new TextDecoder();
+  const parts: Uint8Array[] = [];
 
-  // RIFF chunks are padded to an even length.
-  const chunk = new Uint8Array(8 + payload.length + (payload.length % 2));
-  chunk.set(new TextEncoder().encode(fourcc.padEnd(4)), 0);
-  new DataView(chunk.buffer).setUint32(4, payload.length, true);
-  chunk.set(payload, 8);
+  let offset = 12;
+  while (offset + 8 <= file.length) {
+    const fourcc = decoder.decode(file.subarray(offset, offset + 4));
+    const size = view.getUint32(offset + 4, true);
+    // RIFF chunks are padded to an even length.
+    const stride = 8 + size + (size % 2);
+
+    if (fourcc === "ALPH" || fourcc === "VP8 " || fourcc === "VP8L") {
+      parts.push(file.subarray(offset, offset + stride));
+    }
+    offset += stride;
+  }
+
+  if (parts.length === 0) {
+    throw new Error("Tile contained no WebP bitstream chunk");
+  }
+
+  const total = parts.reduce((n, part) => n + part.length, 0);
+  const chunk = new Uint8Array(total);
+  let written = 0;
+  for (const part of parts) {
+    chunk.set(part, written);
+    written += part.length;
+  }
   return chunk;
 }
 
@@ -96,11 +121,14 @@ function container(
   width: number,
   height: number,
   frames: Uint8Array[],
+  hasAlpha: boolean,
 ): Uint8Array {
   const vp8x = new Uint8Array(18);
   vp8x.set(new TextEncoder().encode("VP8X"), 0);
   new DataView(vp8x.buffer).setUint32(4, 10, true);
-  vp8x[8] = 0x02; // animation flag
+  // Animation flag, plus the alpha flag when any frame carries an ALPH chunk —
+  // without it decoders render the transparency as opaque garbage.
+  vp8x[8] = 0x02 | (hasAlpha ? 0x10 : 0x00);
   vp8x.set(uint24(width - 1), 12);
   vp8x.set(uint24(height - 1), 15);
 
@@ -170,15 +198,21 @@ export async function buildSlideshow(
       ),
     );
 
-    const frames = images.map((image) =>
+    const bitstreams = images.map(bitstreamChunk);
+    const frames = bitstreams.map((bitstream) =>
       animationFrame(
-        bitstreamChunk(image),
+        bitstream,
         { x: 0, y: 0, w: FRAME_WIDTH, h: FRAME_HEIGHT },
         FRAME_DELAY_MS,
       ),
     );
 
-    return container(FRAME_WIDTH, FRAME_HEIGHT, frames);
+    const hasAlpha = bitstreams.some(
+      (bitstream) =>
+        new TextDecoder().decode(bitstream.subarray(0, 4)) === "ALPH",
+    );
+
+    return container(FRAME_WIDTH, FRAME_HEIGHT, frames, hasAlpha);
   } catch (err) {
     // wsrv.nl is a third party. If it is having a bad Thursday the post still
     // goes out, just without the animation.
