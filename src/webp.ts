@@ -13,7 +13,7 @@ import type { FreeGame } from "./types.js";
  */
 
 /** How long each game's full-size frame is displayed. */
-const FRAME_DELAY_MS = 1000;
+const FRAME_DELAY_MS = 1500;
 
 /** Frames are fetched from wsrv.nl, which transcodes to WebP for us. */
 const WSRV = "https://wsrv.nl/";
