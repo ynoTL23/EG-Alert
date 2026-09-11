@@ -6,10 +6,22 @@ const FREE_GAMES_URL =
 
 const STORE_BASE = "https://store.epicgames.com/en-US/p/";
 
+interface DiscountSetting {
+  /** Only "PERCENTAGE" seen in the wild. */
+  discountType?: string | null;
+  /** The *resulting* percentage: 0 means free. Absent under `appliedRules`. */
+  discountPercentage?: number | null;
+}
+
 interface PromotionalOffer {
-  startDate: string | null;
-  endDate: string | null;
-  discountSetting?: { discountPercentage?: number | null } | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  discountSetting?: DiscountSetting | null;
+}
+
+/** Both `promotionalOffers` and `upcomingPromotionalOffers` nest one level. */
+interface PromotionalOfferGroup {
+  promotionalOffers?: PromotionalOffer[] | null;
 }
 
 /**
@@ -37,23 +49,88 @@ interface KeyImage {
   url?: string | null;
 }
 
+/**
+ * The offer kinds seen in the live feed. Open-ended for the same reason as
+ * `KeyImageType`: Epic ships new ones without warning and an unrecognised
+ * value should fall through the `ADD_ON` filter, not fail the build.
+ */
+type OfferType = "BASE_GAME" | "ADD_ON" | "BUNDLE" | (string & {});
+
+interface Mapping {
+  pageSlug?: string | null;
+  /** "productHome" under `catalogNs`, "offer" under `offerMappings`. */
+  pageType?: string | null;
+}
+
+interface TotalPrice {
+  /** Minor units — 1999 is $19.99. Zero is the free-giveaway signal. */
+  discountPrice?: number | null;
+  originalPrice?: number | null;
+  voucherDiscount?: number | null;
+  discount?: number | null;
+  currencyCode?: string | null;
+  currencyInfo?: { decimals?: number | null } | null;
+  fmtPrice?: {
+    originalPrice?: string | null;
+    discountPrice?: string | null;
+    intermediatePrice?: string | null;
+  } | null;
+}
+
+/**
+ * One element of `data.Catalog.searchStore.elements`. Everything is optional
+ * and nullable on purpose: this is untrusted input, and Epic both omits fields
+ * and nulls them out (`promotions` is null on a quarter of the feed).
+ */
 interface Element {
   title?: string | null;
   id?: string | null;
   namespace?: string | null;
+  description?: string | null;
+  effectiveDate?: string | null;
+  offerType?: OfferType | null;
+  expiryDate?: string | null;
+  viewableDate?: string | null;
+  status?: string | null;
+  isCodeRedemptionOnly?: boolean | null;
+  keyImages?: KeyImage[] | null;
+  seller?: { id?: string | null; name?: string | null } | null;
   productSlug?: string | null;
   urlSlug?: string | null;
-  offerType?: string | null;
-  keyImages?: KeyImage[] | null;
+  url?: string | null;
+  items?: Array<{ id?: string | null; namespace?: string | null }> | null;
+  customAttributes?: Array<{
+    key?: string | null;
+    value?: string | null;
+  }> | null;
+  categories?: Array<{ path?: string | null }> | null;
+  tags?: Array<{ id?: string | null }> | null;
+  catalogNs?: { mappings?: Mapping[] | null } | null;
+  offerMappings?: Mapping[] | null;
   price?: {
-    totalPrice?: { discountPrice?: number | null } | null;
-  } | null;
-  catalogNs?: { mappings?: Array<{ pageSlug?: string | null }> | null } | null;
-  offerMappings?: Array<{ pageSlug?: string | null }> | null;
-  promotions?: {
-    promotionalOffers?: Array<{
-      promotionalOffers?: PromotionalOffer[] | null;
+    totalPrice?: TotalPrice | null;
+    lineOffers?: Array<{
+      appliedRules?: Array<{
+        id?: string | null;
+        endDate?: string | null;
+        discountSetting?: DiscountSetting | null;
+      }> | null;
     }> | null;
+  } | null;
+  promotions?: {
+    promotionalOffers?: PromotionalOfferGroup[] | null;
+    upcomingPromotionalOffers?: PromotionalOfferGroup[] | null;
+  } | null;
+}
+
+interface FreeGamesResponse {
+  data?: {
+    Catalog?: {
+      searchStore?: {
+        elements?: Element[] | null;
+        paging?: { count?: number | null; total?: number | null } | null;
+      } | null;
+    } | null;
   } | null;
 }
 
@@ -161,9 +238,7 @@ export async function fetchFreeGames(
     throw new Error(`Epic API returned ${res.status} ${res.statusText}`);
   }
 
-  const body = (await res.json()) as {
-    data?: { Catalog?: { searchStore?: { elements?: Element[] } } };
-  };
+  const body: FreeGamesResponse = await res.json();
 
   const elements = body.data?.Catalog?.searchStore?.elements ?? [];
 
