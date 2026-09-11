@@ -75,6 +75,27 @@ function resolveSlug(el: Element): string | null {
 }
 
 /**
+ * The promotional window covering `now`, or null when none does.
+ *
+ * Epic returns the offers in a group unordered — a live window can be listed
+ * after windows months away — so "the first endDate" is not the current one.
+ * Both the free check and the expiry shown in Discord come from this single
+ * lookup, which is what keeps them describing the same window.
+ */
+function activeOffer(el: Element, now: Date): PromotionalOffer | null {
+  const t = now.getTime();
+  for (const group of el.promotions?.promotionalOffers ?? []) {
+    for (const offer of group?.promotionalOffers ?? []) {
+      if (!offer?.startDate || !offer.endDate) continue;
+      const start = new Date(offer.startDate).getTime();
+      const end = new Date(offer.endDate).getTime();
+      if (t >= start && t < end) return offer;
+    }
+  }
+  return null;
+}
+
+/**
  * An offer is free right now when it has a live promotional window AND the
  * price actually resolves to zero. `discountPercentage` here is the
  * *resulting* percentage (0 = free, 50 = half price), which reads backwards,
@@ -82,25 +103,7 @@ function resolveSlug(el: Element): string | null {
  */
 function isFreeNow(el: Element, now: Date): boolean {
   if (el.price?.totalPrice?.discountPrice !== 0) return false;
-
-  const offers = el.promotions?.promotionalOffers ?? [];
-  return offers.some((group) =>
-    (group?.promotionalOffers ?? []).some((offer) => {
-      if (!offer?.startDate || !offer?.endDate) return false;
-      const start = new Date(offer.startDate).getTime();
-      const end = new Date(offer.endDate).getTime();
-      return now.getTime() >= start && now.getTime() < end;
-    }),
-  );
-}
-
-function activeEndDate(el: Element): string | null {
-  for (const group of el.promotions?.promotionalOffers ?? []) {
-    for (const offer of group?.promotionalOffers ?? []) {
-      if (offer?.endDate) return offer.endDate;
-    }
-  }
-  return null;
+  return activeOffer(el, now) !== null;
 }
 
 /**
@@ -174,16 +177,17 @@ export async function fetchFreeGames(
     // base game is the one people actually want linked.
     if (el.offerType === "ADD_ON") continue;
 
-    const slug = resolveSlug(el);
     if (seen.has(el.title)) continue;
     seen.add(el.title);
+
+    const slug = resolveSlug(el);
 
     games.push({
       title: el.title,
       url: slug ? `${STORE_BASE}${slug}` : FREE_GAMES_PAGE_URL,
       offer: offerFragment(el),
       imageUrl: pickImage(el, IMAGE_TYPES),
-      endDate: activeEndDate(el),
+      endDate: activeOffer(el, now)?.endDate ?? null,
     });
   }
 
