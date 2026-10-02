@@ -1,0 +1,27 @@
+# The default matcher (gobwas) doesn't let `*` cross `/`, and its `**/` needs at
+# least one directory. Either way the lint glob would match nothing, and
+# Lefthook skips a job with no files — a broken glob looks like a pass.
+glob_matcher: doublestar
+
+pre-commit:
+  # Not parallel: lint and format both rewrite the same staged files, and tsc
+  # would read them mid-write. Sequential costs the ~1.5s typecheck.
+  piped: true
+  jobs:
+    - name: lint
+      # --no-warn-ignored: a staged .ts outside src/ has no matching config,
+      # which ESLint reports as a warning rather than skipping quietly.
+      glob: "**/*.{ts,js,mjs}"
+      run: npx eslint --fix --no-warn-ignored {staged_files}
+      stage_fixed: true
+
+    - name: format
+      # Last of the fixers, so Prettier has the final say on layout. No glob:
+      # Prettier honours .prettierignore for explicit paths, and
+      # --ignore-unknown stops it erroring on files it can't parse.
+      run: npx prettier --write --ignore-unknown {staged_files}
+      stage_fixed: true
+
+    - name: typecheck
+      # Whole-project: tsc checks the program, not a file subset.
+      run: npm run typecheck

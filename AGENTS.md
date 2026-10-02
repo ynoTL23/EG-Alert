@@ -16,7 +16,7 @@ library. If a change seems to call for one, it is probably the wrong change.
 
 ```sh
 npm run dev           # local server; GET / runs the job immediately
-npm run check         # typecheck + lint + format — run after any edit
+npm run check         # typecheck + lint + format, to check work mid-change
 npm run typecheck     # tsc --noEmit
 npm run lint          # eslint (type-aware)
 npm run lint:fix      # eslint --fix
@@ -32,8 +32,22 @@ at <http://localhost:8787>. To exercise a change, just `curl` it. If the server
 turns out not to be running, say so and let the user start it rather than
 launching it yourself.
 
-There is no test suite and none is expected. `npm run check` is the check that
-matters — run it before declaring work done.
+**A Lefthook `pre-commit` hook enforces the checks** (`lefthook.yml`). It runs
+`eslint --fix` and `prettier --write` on the staged files, re-stages whatever
+they fixed, then type-checks the whole project; any failure aborts the commit.
+`npm install` installs the hook via Lefthook's `postinstall`, but a failed
+install only prints a warning. Confirm the hook is live with
+`npx lefthook run pre-commit --all-files` — on a clean tree, because it
+`git add`s every file it touches, including your unstaged edits.
+
+Re-staging also means a commit built with `git add -p` gets the _whole_ file
+once a fixer touches it, unstaged hunks included. And `glob_matcher: doublestar`
+in `lefthook.yml` is load-bearing: under the default matcher the lint glob
+matches nothing, and a job with no files is skipped, which looks like a pass.
+
+**Never pass `--no-verify`** (or set `LEFTHOOK=0`) unless the user explicitly
+tells you to. A failing hook means the commit is wrong; fix the code. Bypassing
+the hook to reach a green commit is the failure it exists to prevent.
 
 Formatting is Prettier's job and linting is ESLint's; the two don't overlap
 (`eslint-config-prettier` turns off the stylistic rules). Don't hand-format code
@@ -58,6 +72,7 @@ re-enabling either.
 | `src/constants.ts` | Values used by more than one module                     |
 | `src/types.ts`     | Types used by more than one module                      |
 | `wrangler.jsonc`   | Worker config and cron triggers                         |
+| `lefthook.yml`     | Pre-commit hook: lint, format, typecheck                |
 
 Keep fetching, formatting, and dispatch in their own files. `epic.ts` should not
 know Discord exists.
@@ -184,7 +199,8 @@ file does not un-leak it.
 
 The commit message convention lives in the global `CLAUDE.md`. Repo specifics:
 
-- `npm run check` is the pre-commit check.
+- The `pre-commit` hook runs the checks — see Commands above. Never bypass it
+  with `--no-verify` unless told to.
 - This repo has no test suite, so the commit message is where verification
   evidence lives. Prior commits record mutation checks and hour-by-hour
   comparisons against the old implementation; match that bar for anything
