@@ -252,15 +252,19 @@ export async function fetchFreeGames(
     // base game is the one people actually want linked.
     if (el.offerType === "ADD_ON") continue;
 
-    if (seen.has(el.title)) continue;
-    seen.add(el.title);
+    // Titles collide (remakes ship under the original's name), so key on the
+    // offer id. Title is only the fallback when Epic leaves the ids off.
+    const offer = offerFragment(el);
+    const key = offer ?? el.title;
+    if (seen.has(key)) continue;
+    seen.add(key);
 
     const slug = resolveSlug(el);
 
     games.push({
       title: el.title,
       url: slug ? `${STORE_BASE}${slug}` : FREE_GAMES_PAGE_URL,
-      offer: offerFragment(el),
+      offer,
       imageUrl: pickImage(el, IMAGE_TYPES),
       endDate: activeOffer(el, now)?.endDate ?? null,
     });
