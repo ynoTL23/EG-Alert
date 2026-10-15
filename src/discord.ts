@@ -16,6 +16,18 @@ function purchaseUrl(offers: readonly string[]): string {
   return `https://store.epicgames.com/purchase?${params}`;
 }
 
+/**
+ * Long titles wrap the three-column field grid into a tower. Cut at a word
+ * boundary so the ellipsis lands between words.
+ */
+function shortTitle(title: string, max = 40): string {
+  if (title.length <= max) return title;
+  const cut = title.slice(0, max - 1);
+  const space = cut.lastIndexOf(" ");
+  const kept = space > max / 2 ? cut.slice(0, space) : cut;
+  return `${kept.replace(/[\s:—–-]+$/, "")}…`;
+}
+
 function claimWindow(endDate: string | null): string | null {
   if (!endDate) return null;
   const ts = Math.floor(new Date(endDate).getTime() / 1000);
@@ -71,21 +83,40 @@ export function buildEmbed(games: FreeGame[], imageUrl: string | null) {
  * into the value.
  */
 function multiGameBody(games: FreeGame[]) {
-  const fields = games.map((game) => ({
-    name: game.title.slice(0, 256),
-    value: [`[Store page](${game.url})`, ...details(game)].join("\n"),
-    inline: true,
-  }));
+  return {
+    fields: games.map((game) => ({
+      name: shortTitle(game.title),
+      value: [`[Store page](${game.url})`, ...details(game)].join("\n"),
+      inline: true,
+    })),
+  };
+}
 
-  // A cart holding every game at once. Goes in the description, above the
-  // grid, rather than as a card competing with the games.
+/**
+ * A cart holding every game at once, as a link button below the embed: one
+ * unmistakable target instead of one blue link among many. Pointless when there
+ * is only one game — it would repeat that game's own claim link.
+ *
+ * Link buttons (style 5) are always grey; every coloured style needs a
+ * `custom_id`, and so an application with an interaction endpoint.
+ */
+function claimAllButton(games: FreeGame[]) {
   const offers = games.map((game) => game.offer).filter((o) => o !== null);
-  return offers.length > 1
-    ? {
-        description: `🛒 **[Instant Claim All](${purchaseUrl(offers)})**`,
-        fields,
-      }
-    : { fields };
+  if (offers.length < 2) return [];
+  return [
+    {
+      type: 1, // action row
+      components: [
+        {
+          type: 2, // button
+          style: 5, // link
+          label: `Claim all ${offers.length} games`,
+          emoji: { name: "🛒" },
+          url: purchaseUrl(offers),
+        },
+      ],
+    },
+  ];
 }
 
 /** `doFetch` defaults to the global — see the note on fetchFreeGames. */
@@ -109,7 +140,14 @@ export async function sendToDiscord(
   );
 
   const form = new FormData();
-  form.append("payload_json", JSON.stringify({ embeds: [embed] }));
+  const components = claimAllButton(games);
+  form.append(
+    "payload_json",
+    JSON.stringify({
+      embeds: [embed],
+      ...(components.length ? { components } : {}),
+    }),
+  );
   if (slideshow) {
     form.append(
       "files[0]",
@@ -118,8 +156,15 @@ export async function sendToDiscord(
     );
   }
 
+  // A webhook made in Server Settings isn't application-owned, so Discord
+  // drops `components` — with a 200 and nothing logged — unless this is set.
+  // Set here rather than in the secret, which stays exactly what Discord's UI
+  // hands out.
+  const url = new URL(webhookUrl);
+  url.searchParams.set("with_components", "true");
+
   // No Content-Type header: fetch sets it, with the multipart boundary.
-  const res = await doFetch(webhookUrl, { method: "POST", body: form });
+  const res = await doFetch(url, { method: "POST", body: form });
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "<no body>");

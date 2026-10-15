@@ -25,7 +25,9 @@ cp .dev.vars.example .dev.vars   # then paste your webhook URL into .dev.vars
 ```
 
 Get a webhook URL from Discord: **Server Settings → Integrations → Webhooks →
-New Webhook → Copy Webhook URL**.
+New Webhook → Copy Webhook URL**. Paste it as-is: the Worker adds the
+`with_components` query param itself, which Discord needs to show the
+"Claim all" button.
 
 ## Local development
 

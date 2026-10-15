@@ -12,7 +12,15 @@ async function run(env: Env, now: Date): Promise<Response> {
     );
   }
 
-  const games = await fetchFreeGames(now);
+  // A game without a cart fragment can't be claimed from Discord, so it isn't
+  // posted at all. Epic has never omitted the ids for a live giveaway; warn so
+  // the first time it does is noticed.
+  const games = (await fetchFreeGames(now)).filter((game) => {
+    if (game.offer === null) {
+      console.warn(`Skipping "${game.title}": no offer id, so no claim link.`);
+    }
+    return game.offer !== null;
+  });
 
   if (games.length === 0) {
     console.log("No free games currently listed; skipping Discord post.");
