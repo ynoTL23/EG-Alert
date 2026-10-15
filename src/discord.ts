@@ -24,38 +24,68 @@ function claimWindow(endDate: string | null): string | null {
   return `⏳ Free until <t:${ts}:F> (<t:${ts}:R>)`;
 }
 
-export function buildEmbed(games: FreeGame[], imageUrl: string | null) {
-  const lines = games.map((game) => {
-    const parts = [`**[${game.title}](${game.url})**`];
+/** Everything shown for a game beneath its title. */
+function details(game: FreeGame): string[] {
+  const parts: string[] = [];
 
-    const window = claimWindow(game.endDate);
-    if (window) parts.push(window);
+  const window = claimWindow(game.endDate);
+  if (window) parts.push(window);
 
-    // Drops the game straight into the cart, so claiming is one click from
-    // Discord instead of a storefront detour.
-    if (game.offer) {
-      parts.push(`🛒 [Instant Claim](${purchaseUrl([game.offer])})`);
-    }
-
-    return parts.join("\n");
-  });
-
-  // A cart holding every game at once. Pointless when there is only one — it
-  // would just repeat the link directly above it.
-  const offers = games.map((game) => game.offer).filter((o) => o !== null);
-  if (offers.length > 1) {
-    lines.push(`🛒 **[Instant Claim All](${purchaseUrl(offers)})**`);
+  // Drops the game straight into the cart, so claiming is one click from
+  // Discord instead of a storefront detour.
+  if (game.offer) {
+    parts.push(`🛒 [Instant Claim](${purchaseUrl([game.offer])})`);
   }
+
+  return parts;
+}
+
+export function buildEmbed(games: FreeGame[], imageUrl: string | null) {
+  // A lone inline field renders as a narrow column against empty space, so one
+  // game keeps the plain description layout.
+  const [first] = games;
+  const body =
+    games.length === 1 && first
+      ? {
+          description: [
+            `**[${first.title}](${first.url})**`,
+            ...details(first),
+          ].join("\n"),
+        }
+      : multiGameBody(games);
 
   return {
     title: "🕹️ This Week's Free Games on Epic",
     url: FREE_GAMES_PAGE_URL,
-    description: lines.join("\n\n"),
+    ...body,
     color: EPIC_BLUE,
     ...(imageUrl ? { image: { url: imageUrl } } : {}),
     footer: { text: "Epic Games Store • Free every Thursday" },
     timestamp: new Date().toISOString(),
   };
+}
+
+/**
+ * Inline fields sit side by side, up to three per row — Epic's usual weekly
+ * count. Field names don't render markdown links, so the store link moves
+ * into the value.
+ */
+function multiGameBody(games: FreeGame[]) {
+  const fields = games.map((game) => ({
+    name: game.title.slice(0, 256),
+    value: [`[Store page](${game.url})`, ...details(game)].join("\n"),
+    inline: true,
+  }));
+
+  // A cart holding every game at once. Goes in the description, above the
+  // grid, rather than as a card competing with the games.
+  const offers = games.map((game) => game.offer).filter((o) => o !== null);
+  return offers.length > 1
+    ? {
+        description: `🛒 **[Instant Claim All](${purchaseUrl(offers)})**`,
+        fields,
+      }
+    : { fields };
 }
 
 /** `doFetch` defaults to the global — see the note on fetchFreeGames. */
