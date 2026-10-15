@@ -2,7 +2,7 @@ import { FREE_GAMES_PAGE_URL } from "./constants.js";
 import { buildSlideshow } from "./webp.js";
 import type { FreeGame } from "./types.js";
 
-const EPIC_BLUE = 0x2a2a2a;
+const EPIC_BLUE = 0x0078f2;
 
 /** Referenced by the embed via Discord's `attachment://` scheme. */
 const SLIDESHOW_FILENAME = "free-games.webp";
@@ -26,7 +26,7 @@ function claimWindow(endDate: string | null): string | null {
 
 export function buildEmbed(games: FreeGame[], imageUrl: string | null) {
   const lines = games.map((game) => {
-    const parts = [`🎮 **[${game.title}](${game.url})**`];
+    const parts = [`**[${game.title}](${game.url})**`];
 
     const window = claimWindow(game.endDate);
     if (window) parts.push(window);
