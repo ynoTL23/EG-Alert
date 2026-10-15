@@ -166,6 +166,16 @@ Store URLs are built from `catalogNs.mappings[].pageSlug` (falling back to
 handles this — verified against live API data where the featured free game had a
 `null` `productSlug`.
 
+**Discord silently drops buttons without `with_components=true`.**
+A webhook created in Server Settings is not application-owned, and Discord
+ignores its `components` field unless the POST URL carries
+`?with_components=true` — HTTP 200, message posted, button absent, nothing
+logged. `sendToDiscord()` adds the param in code. Don't move it into
+`DISCORD_WEBHOOK_URL`: the secret must stay exactly what Discord's UI copies,
+or the next rotation silently loses the button. Only link buttons (style 5)
+work this way, and they are always grey — any coloured style needs a
+`custom_id` and an application to receive the click.
+
 **Epic's feed includes games that are not currently free.**
 It returns upcoming promotions and unrelated discounts alongside the live
 giveaway. Both a live promotional window _and_ a zero price are required.
