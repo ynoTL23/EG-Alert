@@ -159,6 +159,24 @@ It is the _resulting_ percentage. The code checks
 `price.totalPrice.discountPrice === 0` instead, which is unambiguous. Don't
 "fix" this to look for `100`.
 
+**`originalPrice: 0` means "no list price", not "worth nothing".**
+Epic reports zero for free-to-play titles and for mystery and sale giveaways of
+paid games (Hogwarts Legacy, DEATHLOOP): 19 of 92 giveaways across 54 archived
+weeks. `fmtPrice.originalPrice` is the string `"0"` in those cases, which is
+truthy. `listPrice()` in `src/epic.ts` reads the integer and turns zero into
+null, so the game posts with no price. The claim-all total needs _every_ game in
+the button priced: a partial sum would sit under a count that includes the
+unpriced game. Zero is the only unusable price that stays silent; `listPrice()`
+warns on any other (not USD, wrong decimals, not a positive integer) so a
+changed payload is noticed.
+
+**Don't format prices with `Intl.NumberFormat`.**
+Constructing the first one loads locale data: ~10ms measured in Node, against a
+10ms CPU budget for the whole cron run. `formatPrice()` in `src/discord.ts` uses
+`toFixed(2)`, which is enough because the request pins `country=US` and
+`listPrice()` drops anything that isn't US cents. Changing the country means
+revisiting both.
+
 **`productSlug` is frequently `null`, and `urlSlug` is sometimes a raw hex id.**
 Store URLs are built from `catalogNs.mappings[].pageSlug` (falling back to
 `offerMappings`), because those are what the storefront actually resolves. A

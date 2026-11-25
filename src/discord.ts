@@ -36,6 +36,32 @@ function claimWindow(endDate: string | null): string | null {
   return `⏳ Free until <t:${ts}:F> (<t:${ts}:R>)`;
 }
 
+/**
+ * Not `Intl.NumberFormat`: building the first one loads locale data and took
+ * ~10ms when measured in Node, which is the whole CPU budget of a cron run.
+ */
+function formatPrice(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+/**
+ * Goes after a game's title; empty when there is no price to show. The no-break
+ * space keeps the dot with the price when a narrow field wraps between them.
+ */
+function priceTag(game: FreeGame): string {
+  return game.price ? ` ·\u00a0${formatPrice(game.price)}` : "";
+}
+
+/**
+ * Null unless every game is priced: a partial sum would sit under a count that
+ * includes the unpriced games and undersell the week.
+ */
+function totalValue(games: readonly FreeGame[]): number | null {
+  const prices = games.map((game) => game.price).filter((p) => p !== null);
+  if (prices.length < games.length) return null;
+  return prices.reduce((sum, p) => sum + p, 0);
+}
+
 /** Everything shown for a game beneath its title. */
 function details(game: FreeGame): string[] {
   const parts: string[] = [];
@@ -60,7 +86,7 @@ export function buildEmbed(games: FreeGame[], imageUrl: string | null) {
     games.length === 1 && first
       ? {
           description: [
-            `**[${first.title}](${first.url})**`,
+            `**[${first.title}](${first.url})**${priceTag(first)}`,
             ...details(first),
           ].join("\n"),
         }
@@ -81,11 +107,13 @@ export function buildEmbed(games: FreeGame[], imageUrl: string | null) {
  * Inline fields sit side by side, up to three per row — Epic's usual weekly
  * count. Field names don't render markdown links, so the store link moves
  * into the value.
+ *
+ * The price is added after the title is cut, so it is never the part lost.
  */
 function multiGameBody(games: FreeGame[]) {
   return {
     fields: games.map((game) => ({
-      name: shortTitle(game.title),
+      name: shortTitle(game.title) + priceTag(game),
       value: [`[Store page](${game.url})`, ...details(game)].join("\n"),
       inline: true,
     })),
@@ -97,12 +125,19 @@ function multiGameBody(games: FreeGame[]) {
  * unmistakable target instead of one blue link among many. Pointless when there
  * is only one game — it would repeat that game's own claim link.
  *
+ * The total value appears only here, next to the action it is an argument for,
+ * and only when every game in the button is priced.
+ *
  * Link buttons (style 5) are always grey; every coloured style needs a
  * `custom_id`, and so an application with an interaction endpoint.
  */
 function claimAllButton(games: FreeGame[]) {
   const offers = games.map((game) => game.offer).filter((o) => o !== null);
   if (offers.length < 2) return [];
+
+  const total = totalValue(games.filter((game) => game.offer !== null));
+  const value = total !== null ? ` (${formatPrice(total)} value)` : "";
+
   return [
     {
       type: 1, // action row
@@ -110,7 +145,7 @@ function claimAllButton(games: FreeGame[]) {
         {
           type: 2, // button
           style: 5, // link
-          label: `Claim all ${offers.length} games`,
+          label: `Claim all ${offers.length} games${value}`,
           emoji: { name: "🛒" },
           url: purchaseUrl(offers),
         },

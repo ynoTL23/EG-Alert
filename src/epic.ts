@@ -65,6 +65,7 @@ interface Mapping {
 interface TotalPrice {
   /** Minor units — 1999 is $19.99. Zero is the free-giveaway signal. */
   discountPrice?: number | null;
+  /** Zero on many live giveaways — see `listPrice()`. */
   originalPrice?: number | null;
   voucherDiscount?: number | null;
   discount?: number | null;
@@ -212,6 +213,43 @@ function pickImage(
   return images[0]?.url ?? null;
 }
 
+/**
+ * What the game normally costs in US cents, or null when Epic doesn't say.
+ *
+ * Zero is not a price. Epic reports it for free-to-play titles and also for
+ * mystery and sale giveaways of paid games (Hogwarts Legacy, DEATHLOOP), and
+ * the two can't be told apart here. Its `fmtPrice` string is the truthy "0" in
+ * both cases, which is why this reads the integer instead.
+ *
+ * The request pins `country=US`, so anything but US cents is not a price
+ * `discord.ts` knows how to write. Zero is expected and stays quiet; anything
+ * else unusable warns, so a changed payload shows in the logs instead of
+ * silently dropping every price. The post still goes out without one.
+ */
+function listPrice(el: Element): number | null {
+  const total = el.price?.totalPrice;
+  const cents = total?.originalPrice;
+  if (cents === 0) return null;
+
+  if (
+    total?.currencyCode === "USD" &&
+    total.currencyInfo?.decimals === 2 &&
+    typeof cents === "number" &&
+    Number.isSafeInteger(cents) &&
+    cents > 0
+  ) {
+    return cents;
+  }
+
+  const seen = JSON.stringify({
+    currencyCode: total?.currencyCode,
+    decimals: total?.currencyInfo?.decimals,
+    originalPrice: cents,
+  });
+  console.warn(`Posting "${el.title}" without a price: unusable ${seen}.`);
+  return null;
+}
+
 // Widest-first: the slideshow's frames are 16:9, and `Thumbnail` is portrait,
 // so it only earns its place as a last resort.
 const IMAGE_TYPES: readonly KeyImageType[] = [
@@ -267,6 +305,7 @@ export async function fetchFreeGames(
       offer,
       imageUrl: pickImage(el, IMAGE_TYPES),
       endDate: activeOffer(el, now)?.endDate ?? null,
+      price: listPrice(el),
     });
   }
 

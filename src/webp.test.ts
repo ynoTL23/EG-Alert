@@ -51,6 +51,7 @@ const games: FreeGame[] = [
     offer: null,
     imageUrl: "https://e/a.png",
     endDate: null,
+    price: null,
   },
   {
     title: "B",
@@ -58,6 +59,7 @@ const games: FreeGame[] = [
     offer: null,
     imageUrl: "https://e/b.png",
     endDate: null,
+    price: null,
   },
 ];
 

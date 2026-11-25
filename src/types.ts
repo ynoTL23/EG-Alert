@@ -11,4 +11,6 @@ export interface FreeGame {
   /** 16:9 key art, one slideshow frame per game. */
   imageUrl: string | null;
   endDate: string | null;
+  /** Usual price in US cents, never zero. Null when Epic gives no list price. */
+  price: number | null;
 }
