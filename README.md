@@ -11,8 +11,10 @@ webhook.
 1. A cron trigger wakes the Worker on Thursday, around midday Eastern.
 2. It fetches Epic's free-games promotions feed and keeps only the offers that
    are _actually free right now_.
-3. It posts a single embed to your Discord webhook with each game's title, a link
-   to its store page, and a countdown to when the giveaway ends.
+3. It posts a single embed to your Discord webhook with each game's title and
+   usual price, a link to its store page, and a countdown to when the giveaway
+   ends. With several games, a "Claim all" button shows what they are worth
+   together.
 4. When there is more than one game, it attaches an animated WebP that loops
    through their key art, a second per game. A lone game gets its picture linked
    straight from Epic's CDN instead — there is nothing to animate.
@@ -125,10 +127,13 @@ wrangler.jsonc  Worker config and cron triggers
 - **Never commit `.dev.vars`.** It holds a webhook URL, which is a bearer
   credential — anyone with it can post to your channel. It is gitignored; if one
   leaks, delete the webhook in Discord and make a new one.
-- Epic's feed is quirky in two ways the code works around: `productSlug` is often
+- Epic's feed is quirky in ways the code works around: `productSlug` is often
   `null` (so store links are built from `catalogNs.mappings[].pageSlug`), and
   `discountPercentage` is the _resulting_ percentage, where `0` means free rather
   than "no discount". The price is checked directly instead.
+- Some giveaways have no list price in Epic's feed (it says `0`). Those post
+  without a price, and a week with one of them shows no "Claim all" total, which
+  appears only when every game is priced.
 - If Epic lists no free games, the Worker logs and posts nothing rather than
   sending an empty embed.
 - The animation is assembled without decoding anything: Epic's CDN resizes each
