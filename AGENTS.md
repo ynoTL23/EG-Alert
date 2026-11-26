@@ -90,10 +90,12 @@ everywhere else. Don't route it through a client object or a DI container.
 ## Things that will bite you
 
 **One cron, no schedule guard — this is deliberate.** `wrangler.jsonc` registers
-exactly `1 16 * * THU`, which is 12:01 PM Eastern in summer and 11:01 AM in
+exactly `15 16 * * THU`, which is 12:15 PM Eastern in summer and 11:15 AM in
 winter. The hour of DST drift is accepted on purpose: Epic rotates the free
-games around 11:00 AM Eastern, so aiming at midday clears the rotation on both
-sides of the year.
+games at 11:00 AM Eastern — 15:00 UTC in summer, 16:00 UTC in winter, because
+Epic's rotation follows DST and Cloudflare's crons don't — so 16:15 UTC is 75
+minutes past it in summer and 15 in winter. Winter is the side that can race;
+if a winter run ever logs "No free games" again, push the minute later.
 
 Do not "fix" the drift by adding a second cron and a wall-clock guard. That is
 what this repo used to do — two crons (`1 15`, `1 16`) plus `shouldSendNow()` in
@@ -105,6 +107,11 @@ The failure that motivated this: on 2026-09-03 the 15:01 UTC firing passed the
 old guard correctly (it really was 11:01 EDT), fetched Epic, and got an empty
 promotions feed — the rotation had not happened yet. The guard was working; the
 send time was simply too early.
+
+The fix then moved the cron to `1 16`, assuming Epic rotates at a fixed 15:00
+UTC. It doesn't: on 2026-11-26 (EST) the promotions started at 16:00 UTC, the
+16:01 firing raced the rotation exactly as before, and nothing posted. Check
+the feed's `startDate` in both summer and winter before moving the cron.
 
 **Write the cron weekday as `THU`, never as a number.** Cloudflare follows
 Quartz numbering, where 1 = Sunday and Thursday is `5` — not the 0 = Sunday

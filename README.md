@@ -78,21 +78,23 @@ date. Deploys are unaffected — this only breaks the local runtime.
 
 ## About the schedule
 
-One cron: `1 16 * * THU`.
+One cron: `15 16 * * THU`.
 
 Cloudflare cron triggers **run on UTC only** — there is no timezone option, and
 UTC does not observe daylight saving, so a fixed expression drifts an hour
 against Eastern across the year:
 
-| Cron (UTC)     | Summer (EDT, UTC-4) | Winter (EST, UTC-5) |
-| -------------- | ------------------- | ------------------- |
-| `1 16 * * THU` | 12:01 PM            | 11:01 AM            |
+| Cron (UTC)      | Summer (EDT, UTC-4) | Winter (EST, UTC-5) |
+| --------------- | ------------------- | ------------------- |
+| `15 16 * * THU` | 12:15 PM            | 11:15 AM            |
 
 That drift is deliberately tolerated. Epic rotates the free games at roughly
 11:00 AM Eastern, and firing at 11:01 raced the rotation — on 2026-09-03 the
-Worker woke to an empty promotions feed and posted nothing. Aiming at midday
-puts an hour of slack on the summer side and still lands after the rotation in
-winter, so neither side of DST needs a correction.
+Worker woke to an empty promotions feed and posted nothing. The rotation follows
+Eastern time, so in UTC it moves too: 15:00 in summer, 16:00 in winter. An
+interim `1 16` cron assumed a fixed 15:00 UTC and raced the winter rotation on
+2026-11-26. `15 16` lands 15 minutes after the winter rotation and 75 after the
+summer one, so neither side needs a correction.
 
 This replaced an earlier arrangement of two crons (`1 15` and `1 16`) plus a
 `shouldSendNow()` wall-clock guard that discarded whichever firing was not

@@ -7,13 +7,14 @@
     "enabled": true
   },
   "triggers": {
-    // 16:01 UTC = 12:01 PM Eastern in summer, 11:01 AM in winter. Cloudflare
-    // crons are UTC-only, so the local time drifts an hour across DST; noon is
-    // late enough past Epic's ~11:00 ET rotation that either side has slack.
+    // 16:15 UTC = 12:15 PM Eastern in summer, 11:15 AM in winter. Epic rotates
+    // at 11:00 AM Eastern, which itself moves with DST (15:00 UTC in summer,
+    // 16:00 UTC in winter), so winter is the tight side: 15 minutes of slack.
+    // 16:01 raced the winter rotation and posted nothing on 2026-11-26.
     //
     // The weekday is spelled "THU", not a number: Cloudflare follows Quartz,
     // where 1 = Sunday and Thursday is 5 — not the 0 = Sunday convention most
     // cron systems use. "* * 4" here silently means Wednesday.
-    "crons": ["1 16 * * THU"]
+    "crons": ["15 16 * * THU"]
   }
 }
