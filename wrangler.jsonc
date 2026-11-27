@@ -3,9 +3,13 @@
   "name": "eg-alert",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-13",
+  // Transcodes the slideshow tiles to WebP outside the Worker's CPU budget. The
+  // Images Free plan needs no zone and allows 5,000 transformations a month; a
+  // run uses one per game.
+  "images": { "binding": "IMAGES" },
   "observability": {
     "enabled": true,
-    // Traces record each subrequest (Epic, wsrv.nl, Discord) with status and
+    // Traces record each subrequest (Epic, Discord) with status and
     // timing. On 2026-11-26 the logs could not show whether the Epic fetch was
     // a stale cache hit; a span would have.
     "traces": { "enabled": true }

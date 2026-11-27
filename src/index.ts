@@ -3,6 +3,7 @@ import { sendToDiscord } from "./discord.js";
 
 export interface Env {
   DISCORD_WEBHOOK_URL: string;
+  IMAGES: ImagesBinding;
 }
 
 async function run(env: Env, now: Date): Promise<Response> {
@@ -29,7 +30,7 @@ async function run(env: Env, now: Date): Promise<Response> {
     return new Response("No free games found.", { status: 200 });
   }
 
-  await sendToDiscord(env.DISCORD_WEBHOOK_URL, games);
+  await sendToDiscord(env.DISCORD_WEBHOOK_URL, games, env.IMAGES);
 
   const titles = games.map((g) => g.title).join(", ");
   console.log(`Posted ${games.length} free game(s): ${titles}`);

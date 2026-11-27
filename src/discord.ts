@@ -154,13 +154,17 @@ function claimAllButton(games: FreeGame[]) {
   ];
 }
 
-/** `doFetch` defaults to the global — see the note on fetchFreeGames. */
+/**
+ * `images` is the Worker's `IMAGES` binding, which builds the slideshow tiles.
+ * `doFetch` defaults to the global — see the note on fetchFreeGames.
+ */
 export async function sendToDiscord(
   webhookUrl: string,
   games: FreeGame[],
+  images: ImagesBinding,
   doFetch: typeof fetch = fetch,
 ): Promise<void> {
-  const slideshow = await buildSlideshow(games, doFetch);
+  const slideshow = await buildSlideshow(games, images, doFetch);
 
   // Upload the animation with the message rather than hotlinking it: Discord
   // then hosts it, so there is no third-party URL to expire or rate-limit.
