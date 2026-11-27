@@ -23,7 +23,9 @@ async function run(env: Env, now: Date): Promise<Response> {
   });
 
   if (games.length === 0) {
-    console.log("No free games currently listed; skipping Discord post.");
+    // Error, not info: every Thursday has a giveaway, so an empty run is a
+    // failure. The warning logged just before it says why.
+    console.error("No free games currently listed; skipping Discord post.");
     return new Response("No free games found.", { status: 200 });
   }
 
