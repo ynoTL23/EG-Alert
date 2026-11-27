@@ -7,6 +7,14 @@
   // Images Free plan needs no zone and allows 5,000 transformations a month; a
   // run uses one per game.
   "images": { "binding": "IMAGES" },
+  // Settings for `wrangler preview`, which inherits neither bindings nor
+  // observability from the top level. A Preview also gets its own
+  // DISCORD_WEBHOOK_URL (`wrangler preview secret put`), never production's,
+  // and never runs the cron: test it by fetching its URL.
+  "previews": {
+    "images": { "binding": "IMAGES" },
+    "observability": { "enabled": true, "traces": { "enabled": true } }
+  },
   "observability": {
     "enabled": true,
     // Traces record each subrequest (Epic, Discord) with status and
