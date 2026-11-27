@@ -22,6 +22,12 @@ pre-commit:
       run: npx prettier --write --ignore-unknown {staged_files}
       stage_fixed: true
 
+    - name: crons
+      # Only when the cron moves. wrangler.jsonc is outside Prettier and ESLint,
+      # so this is the one check that reads it.
+      glob: "wrangler.jsonc"
+      run: npm run check:crons
+
     - name: typecheck
       # Whole-project: tsc checks the program, not a file subset.
       run: npm run typecheck
