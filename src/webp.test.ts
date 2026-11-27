@@ -28,21 +28,43 @@ function webp(chunks: Uint8Array[]): Uint8Array {
 
 const simple = webp([chunk("VP8 ", new Uint8Array(40).fill(0xaa))]);
 
-// What wsrv returns when the source has transparency: the bitstream sits behind
-// a VP8X header and an ALPH chunk rather than at byte 12.
+// What a transcoder returns when the source has transparency: the bitstream
+// sits behind a VP8X header and an ALPH chunk rather than at byte 12.
 const extended = webp([
   chunk("VP8X", new Uint8Array(10)),
   chunk("ALPH", new Uint8Array(16).fill(0xbb)),
   chunk("VP8 ", new Uint8Array(60).fill(0xcc)),
 ]);
 
-function fetchReturning(tiles: Uint8Array[]): typeof fetch {
+/** Stands in for Epic's CDN: any source image, always 200. */
+const epicFetch = (() =>
+  Promise.resolve(
+    new Response("jpeg bytes", { status: 200 }),
+  )) as unknown as typeof fetch;
+
+/** Stands in for the IMAGES binding: hands out `tiles` in call order. */
+function imagesReturning(tiles: Uint8Array[]): ImagesBinding {
   let i = 0;
-  return (() =>
-    Promise.resolve(
-      new Response(tiles[i++], { status: 200 }),
-    )) as unknown as typeof fetch;
+  const transformer = {
+    transform: () => transformer,
+    output: () => {
+      const tile = tiles[i++];
+      return Promise.resolve({ response: () => new Response(tile) });
+    },
+  };
+  return {
+    input: () => transformer,
+  } as unknown as ImagesBinding;
 }
+
+const failingImages = {
+  input: () => ({
+    transform() {
+      return this;
+    },
+    output: () => Promise.reject(new Error("9422: free tier exhausted")),
+  }),
+} as unknown as ImagesBinding;
 
 const games: FreeGame[] = [
   {
@@ -80,7 +102,11 @@ function chunksOf(file: Uint8Array): Array<{ fourcc: string; size: number }> {
 }
 
 void test("extended-format tiles keep their real bitstream", async () => {
-  const out = await buildSlideshow(games, fetchReturning([simple, extended]));
+  const out = await buildSlideshow(
+    games,
+    imagesReturning([simple, extended]),
+    epicFetch,
+  );
   assert.ok(out, "expected a slideshow");
 
   const found = chunksOf(out);
@@ -106,6 +132,15 @@ void test("extended-format tiles keep their real bitstream", async () => {
 });
 
 void test("a single game produces no animation", async () => {
-  const out = await buildSlideshow(games.slice(0, 1), fetchReturning([simple]));
+  const out = await buildSlideshow(
+    games.slice(0, 1),
+    imagesReturning([simple]),
+    epicFetch,
+  );
+  assert.equal(out, null);
+});
+
+void test("a failed transform falls back to no animation", async () => {
+  const out = await buildSlideshow(games, failingImages, epicFetch);
   assert.equal(out, null);
 });

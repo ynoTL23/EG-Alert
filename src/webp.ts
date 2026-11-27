@@ -4,19 +4,20 @@ import type { FreeGame } from "./types.js";
  * Builds the animated WebP shown in the Discord embed: one frame per free game,
  * looping.
  *
- * The Worker never decodes a pixel. Epic's CDN resizes, wsrv.nl transcodes each
- * tile to WebP, and this module only splices the resulting byte ranges into one
- * RIFF container. That matters: decoding a JPEG costs 100-300ms, and a Worker on
- * the free plan gets 10ms of CPU per cron invocation. `fetch()` time does not
- * count toward that budget, so pushing the pixel work over the network is what
- * keeps this affordable.
+ * The Worker never decodes a pixel. Epic's CDN resizes, the Cloudflare Images
+ * binding transcodes each tile to WebP, and this module only splices the
+ * resulting byte ranges into one RIFF container. That matters: decoding a JPEG
+ * costs 100-300ms, and a Worker on the free plan gets 10ms of CPU per cron
+ * invocation. The binding is a call out of the isolate, like `fetch()`, so the
+ * pixel work happens elsewhere and is what keeps this affordable.
+ *
+ * Tiles used to come from wsrv.nl, which began answering every request from the
+ * deployed Worker with 403 on 2026-11-27 while serving the same URLs to anyone
+ * else. A public proxy fronted by Cloudflare can block Worker traffic at will.
  */
 
 /** How long each game's full-size frame is displayed. */
 const FRAME_DELAY_MS = 1500;
-
-/** Frames are fetched from wsrv.nl, which transcodes to WebP for us. */
-const WSRV = "https://wsrv.nl/";
 
 /**
  * Epic's CDN only resizes when `resize=1` is present. Without it the request
@@ -25,12 +26,6 @@ const WSRV = "https://wsrv.nl/";
  */
 function epicSized(url: string, width: number): string {
   return `${url}?resize=1&w=${width}`;
-}
-
-function tileUrl(source: string, w: number, h: number): string {
-  // Request the source at 2x the tile so wsrv is downscaling, never upscaling.
-  const src = encodeURIComponent(epicSized(source, w * 2));
-  return `${WSRV}?url=${src}&w=${w}&h=${h}&fit=cover&output=webp&q=80`;
 }
 
 /** Every frame fills the canvas, sized to Epic's 16:9 key art. */
@@ -154,15 +149,28 @@ function container(
 }
 
 async function fetchTile(
-  url: string,
+  source: string,
+  images: ImagesBinding,
   doFetch: typeof fetch,
 ): Promise<Uint8Array> {
-  const res = await doFetch(url);
-  if (!res.ok) {
+  // Request the source at 2x the tile so the transform is downscaling, never
+  // upscaling.
+  const res = await doFetch(epicSized(source, FRAME_WIDTH * 2));
+  if (!res.ok || !res.body) {
     throw new Error(`Tile fetch failed: ${res.status} ${res.statusText}`);
   }
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  // wsrv can answer 200 with an error page; a WebP always starts RIFF....WEBP.
+  // workers-types declares `body` as `ReadableStream<any>`; the Fetch spec says
+  // its chunks are always Uint8Array.
+  const original = res.body as ReadableStream<Uint8Array>;
+  // Throws an ImagesError (e.g. 9422 once the free tier's 5,000 monthly
+  // transformations are spent), which buildSlideshow turns into "no animation".
+  const result = await images
+    .input(original)
+    .transform({ width: FRAME_WIDTH, height: FRAME_HEIGHT, fit: "cover" })
+    .output({ format: "image/webp", quality: 80 });
+  const bytes = new Uint8Array(await result.response().arrayBuffer());
+  // The splice below trusts the container, so check it is one: a WebP always
+  // starts RIFF....WEBP.
   const header = new TextDecoder().decode(bytes.subarray(0, 12));
   if (!header.startsWith("RIFF") || !header.endsWith("WEBP")) {
     throw new Error("Tile fetch returned something that is not a WebP");
@@ -180,10 +188,12 @@ async function fetchTile(
  * Returns `null` rather than throwing when the art cannot be built: a missing
  * image is not a reason to skip the week's post.
  *
- * `doFetch` defaults to the global, matching `fetchFreeGames`/`sendToDiscord`.
+ * `images` is the Worker's `IMAGES` binding. `doFetch` defaults to the global,
+ * matching `fetchFreeGames`/`sendToDiscord`.
  */
 export async function buildSlideshow(
   games: FreeGame[],
+  images: ImagesBinding,
   doFetch: typeof fetch = fetch,
 ): Promise<Uint8Array | null> {
   const sources = games.map((g) => g.imageUrl).filter((url) => url !== null);
@@ -192,13 +202,11 @@ export async function buildSlideshow(
   if (sources.length < 2) return null;
 
   try {
-    const images = await Promise.all(
-      sources.map((url) =>
-        fetchTile(tileUrl(url, FRAME_WIDTH, FRAME_HEIGHT), doFetch),
-      ),
+    const tiles = await Promise.all(
+      sources.map((url) => fetchTile(url, images, doFetch)),
     );
 
-    const bitstreams = images.map(bitstreamChunk);
+    const bitstreams = tiles.map(bitstreamChunk);
     const frames = bitstreams.map((bitstream) =>
       animationFrame(
         bitstream,
@@ -214,9 +222,15 @@ export async function buildSlideshow(
 
     return container(FRAME_WIDTH, FRAME_HEIGHT, frames, hasAlpha);
   } catch (err) {
-    // wsrv.nl is a third party. If it is having a bad Thursday the post still
-    // goes out, just without the animation.
-    console.error("Slideshow build failed; posting without it:", err);
+    // If Epic's CDN or the Images binding is having a bad Thursday the post
+    // still goes out, just without the animation. The message is logged on its
+    // own because Workers Logs recorded only the stack on 2026-11-27, which
+    // hid the 403 that caused it.
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      `Slideshow build failed; posting without it: ${message}`,
+      err,
+    );
     return null;
   }
 }

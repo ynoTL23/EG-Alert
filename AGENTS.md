@@ -7,7 +7,7 @@ Guidance for AI agents working in this repository.
 A single Cloudflare Worker that posts Epic Games Store's weekly free games to a
 Discord webhook on a cron trigger. Five source files, no npm dependencies at
 runtime, no framework, no tests. It does call three services: Epic's promotions
-API, wsrv.nl (image transcoding), and the Discord webhook.
+API, the Cloudflare Images binding (image transcoding), and the Discord webhook.
 
 This project does not need a router, a logger, a DI container, or an HTTP client
 library. If a change seems to call for one, it is probably the wrong change.
@@ -93,6 +93,8 @@ don't add barrel files.
 defaulting to the global `fetch`. It exists so both can be exercised against
 recorded responses instead of the live network — pass it in tests, omit it
 everywhere else. Don't route it through a client object or a DI container.
+`sendToDiscord()` and `buildSlideshow()` also take the `IMAGES` binding, passed
+down from `env` the same plain way; tests hand in a fake.
 
 ## Things that will bite you
 
@@ -128,17 +130,23 @@ affected — Cloudflare's edge runtime is always current.
 
 **The Worker must never decode an image.**
 `src/webp.ts` builds the embed's animation by splicing already-encoded WebP
-bytes: Epic's CDN resizes, wsrv.nl transcodes, and the Worker only writes RIFF
-headers. This is not a stylistic choice. A cron trigger on the free plan gets
-**10ms of CPU**, and decoding one JPEG costs 100-300ms. `fetch()` time does not
-count toward that budget, which is the only reason this fits. Any change that
-decodes, composites, or re-encodes pixels in the Worker will blow the limit.
+bytes: Epic's CDN resizes, the `IMAGES` binding transcodes, and the Worker only
+writes RIFF headers. This is not a stylistic choice. A cron trigger on the free
+plan gets **10ms of CPU**, and decoding one JPEG costs 100-300ms. `fetch()` and
+binding calls run outside the isolate and don't count toward that budget, which
+is the only reason this fits. Any change that decodes, composites, or re-encodes
+pixels in the Worker will blow the limit.
 
-This rules out a collage. Combining pictures into one frame means writing pixels,
-and nothing in the pipeline will do that for us — wsrv.nl transforms one image
-per request, and its `overlay`/`mask`/`composite` parameters are silently
-ignored. A grid built the only way that _is_ affordable — one frame per tile,
-each at its own offset — was tried and reverted: clients with autoplay disabled
+Don't move transcoding back to a public proxy. wsrv.nl did the job until
+2026-11-27, when it began answering 403 to every request from the deployed
+Worker while serving the same URLs to everyone else; any proxy behind Cloudflare
+can block Worker traffic that way. The binding is on the Images Free plan: no
+zone needed, 5,000 transformations a month, one per game per run. Past the cap
+it throws `9422`, which `buildSlideshow()` turns into a post without animation.
+
+Compositing pictures into one frame has to happen in the binding (`draw()`
+overlays one image on another), never in the Worker. A grid built from frames
+at their own offsets was tried and reverted: clients with autoplay disabled
 render frame 0 and stop, so viewers saw a single tile against black. Hence one
 frame per game, each a complete picture.
 

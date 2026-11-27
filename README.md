@@ -144,9 +144,11 @@ wrangler.jsonc  Worker config and cron triggers
   empty embed. It logs an error, plus a warning that summarises the feed and
   says whether the copy it got was stale.
 - The animation is assembled without decoding anything: Epic's CDN resizes each
-  picture, [wsrv.nl](https://wsrv.nl) transcodes it to WebP, and the Worker only
-  writes the container headers around the frames. A Worker gets very little CPU
-  per cron run, and decoding a JPEG would spend it several times over. If
-  wsrv.nl is unreachable the post still goes out, just without the animation.
+  picture, the [Cloudflare Images](https://developers.cloudflare.com/images/optimization/binding/)
+  binding transcodes it to WebP, and the Worker only writes the container
+  headers around the frames. A Worker gets very little CPU per cron run, and
+  decoding a JPEG would spend it several times over. If a transform fails —
+  including past the Images Free plan's 5,000 a month — the post still goes
+  out, just without the animation.
 - Epic's image URLs need `?resize=1` for the other parameters to do anything.
   `?w=480` on its own is ignored and returns the multi-megabyte original.
