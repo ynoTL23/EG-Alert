@@ -250,6 +250,43 @@ function listPrice(el: Element): number | null {
   return null;
 }
 
+/**
+ * One line explaining an empty result, so the logs alone can tell the causes
+ * apart. An upcoming free window whose start has already passed means Epic
+ * served a pre-rotation copy of the feed (2026-11-26: fetched 61s after the
+ * rotation). Live free windows with nothing at price 0 point at a changed
+ * payload; no upcoming free window at all is a week without a giveaway.
+ */
+function describeFeed(feed: Element[], now: Date): string {
+  // Untrusted like the rest: a null entry must not turn the diagnostic itself
+  // into the exception.
+  const elements = feed.filter(Boolean);
+  // Sales share the feed and its window lists. Only a 0% window (the resulting
+  // percentage, so free) says anything about the giveaway.
+  const isFree = (offer: PromotionalOffer | null | undefined) =>
+    offer?.discountSetting?.discountPercentage === 0;
+
+  const live = elements.filter((el) => isFree(activeOffer(el, now))).length;
+  const zero = elements.filter(
+    (el) => el.price?.totalPrice?.discountPrice === 0,
+  ).length;
+  const next = Math.min(
+    ...elements
+      .flatMap((el) => el.promotions?.upcomingPromotionalOffers ?? [])
+      .flatMap((group) => group?.promotionalOffers ?? [])
+      .filter(isFree)
+      .map((offer) => Date.parse(offer?.startDate ?? ""))
+      .filter(Number.isFinite),
+  );
+
+  let upcoming = "no upcoming free window";
+  if (Number.isFinite(next)) {
+    upcoming = `next free window starts ${new Date(next).toISOString()}`;
+    if (next <= now.getTime()) upcoming += " (already past: stale feed)";
+  }
+  return `${elements.length} elements, ${live} live free windows, ${zero} at price 0, ${upcoming}`;
+}
+
 // Widest-first: the slideshow's frames are 16:9, and `Thumbnail` is portrait,
 // so it only earns its place as a last resort.
 const IMAGE_TYPES: readonly KeyImageType[] = [
@@ -307,6 +344,12 @@ export async function fetchFreeGames(
       endDate: activeOffer(el, now)?.endDate ?? null,
       price: listPrice(el),
     });
+  }
+
+  if (games.length === 0) {
+    console.warn(
+      `Epic feed has no free games at ${now.toISOString()}: ${describeFeed(elements, now)}.`,
+    );
   }
 
   return games;

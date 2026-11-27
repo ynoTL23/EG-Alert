@@ -78,35 +78,39 @@ date. Deploys are unaffected — this only breaks the local runtime.
 
 ## About the schedule
 
-One cron: `1 16 * * THU`.
+One cron: `15 16 * * THU`.
 
 Cloudflare cron triggers **run on UTC only** — there is no timezone option, and
 UTC does not observe daylight saving, so a fixed expression drifts an hour
 against Eastern across the year:
 
-| Cron (UTC)     | Summer (EDT, UTC-4) | Winter (EST, UTC-5) |
-| -------------- | ------------------- | ------------------- |
-| `1 16 * * THU` | 12:01 PM            | 11:01 AM            |
+| Cron (UTC)      | Summer (EDT, UTC-4) | Winter (EST, UTC-5) |
+| --------------- | ------------------- | ------------------- |
+| `15 16 * * THU` | 12:15 PM            | 11:15 AM            |
 
 That drift is deliberately tolerated. Epic rotates the free games at roughly
 11:00 AM Eastern, and firing at 11:01 raced the rotation — on 2026-09-03 the
-Worker woke to an empty promotions feed and posted nothing. Aiming at midday
-puts an hour of slack on the summer side and still lands after the rotation in
-winter, so neither side of DST needs a correction.
+Worker woke to an empty promotions feed and posted nothing. The rotation follows
+Eastern time, so in UTC it moves too: 15:00 in summer, 16:00 in winter. An
+interim `1 16` cron assumed a fixed 15:00 UTC and raced the winter rotation on
+2026-11-26. `15 16` lands 15 minutes after the winter rotation and 75 after the
+summer one, so neither side needs a correction.
 
 This replaced an earlier arrangement of two crons (`1 15` and `1 16`) plus a
 `shouldSendNow()` wall-clock guard that discarded whichever firing was not
 11:01 Eastern. That machinery pinned the post to an exact local time; once the
 send time moved to midday, the exact local time stopped being worth the
 moving parts, and the guard, its constants, and the `check:crons` script were
-all removed.
+all removed. A smaller `check:crons` came back after 2026-11-26: it checks the
+one cron against the winter rotation instead of against a local send time.
 
 The weekday is written `THU` rather than a number on purpose. Cloudflare follows
 [Quartz](https://developers.cloudflare.com/workers/configuration/cron-triggers/#supported-cron-expressions)
 numbering, where **1 = Sunday** and Thursday is `5` — not the `0 = Sunday`
 convention most cron systems use. Writing `4` is not an error; it is a valid
-expression that fires on **Wednesday**. Nothing checks this any more, so it is
-worth getting right by hand.
+expression that fires on **Wednesday**. `npm run check:crons` rejects anything
+but `THU`, and fails when the cron lands under 10 minutes after the winter
+rotation.
 
 ## Project layout
 
@@ -118,6 +122,8 @@ src/
   webp.ts       builds the looping WebP attached to the embed
   constants.ts  values shared by more than one module (store URL)
   types.ts      shared types (FreeGame)
+scripts/
+  check-crons.ts  fails when the cron can race Epic's rotation
 wrangler.jsonc  Worker config and cron triggers
 .dev.vars       local secrets (gitignored)
 ```
@@ -134,8 +140,9 @@ wrangler.jsonc  Worker config and cron triggers
 - Some giveaways have no list price in Epic's feed (it says `0`). Those post
   without a price, and a week with one of them shows no "Claim all" total, which
   appears only when every game is priced.
-- If Epic lists no free games, the Worker logs and posts nothing rather than
-  sending an empty embed.
+- If Epic lists no free games, the Worker posts nothing rather than sending an
+  empty embed. It logs an error, plus a warning that summarises the feed and
+  says whether the copy it got was stale.
 - The animation is assembled without decoding anything: Epic's CDN resizes each
   picture, [wsrv.nl](https://wsrv.nl) transcodes it to WebP, and the Worker only
   writes the container headers around the frames. A Worker gets very little CPU
