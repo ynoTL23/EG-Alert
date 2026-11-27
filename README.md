@@ -101,14 +101,16 @@ This replaced an earlier arrangement of two crons (`1 15` and `1 16`) plus a
 11:01 Eastern. That machinery pinned the post to an exact local time; once the
 send time moved to midday, the exact local time stopped being worth the
 moving parts, and the guard, its constants, and the `check:crons` script were
-all removed.
+all removed. A smaller `check:crons` came back after 2026-11-26: it checks the
+one cron against the winter rotation instead of against a local send time.
 
 The weekday is written `THU` rather than a number on purpose. Cloudflare follows
 [Quartz](https://developers.cloudflare.com/workers/configuration/cron-triggers/#supported-cron-expressions)
 numbering, where **1 = Sunday** and Thursday is `5` — not the `0 = Sunday`
 convention most cron systems use. Writing `4` is not an error; it is a valid
-expression that fires on **Wednesday**. Nothing checks this any more, so it is
-worth getting right by hand.
+expression that fires on **Wednesday**. `npm run check:crons` rejects anything
+but `THU`, and fails when the cron lands under 10 minutes after the winter
+rotation.
 
 ## Project layout
 
@@ -120,6 +122,8 @@ src/
   webp.ts       builds the looping WebP attached to the embed
   constants.ts  values shared by more than one module (store URL)
   types.ts      shared types (FreeGame)
+scripts/
+  check-crons.ts  fails when the cron can race Epic's rotation
 wrangler.jsonc  Worker config and cron triggers
 .dev.vars       local secrets (gitignored)
 ```
@@ -136,8 +140,9 @@ wrangler.jsonc  Worker config and cron triggers
 - Some giveaways have no list price in Epic's feed (it says `0`). Those post
   without a price, and a week with one of them shows no "Claim all" total, which
   appears only when every game is priced.
-- If Epic lists no free games, the Worker logs and posts nothing rather than
-  sending an empty embed.
+- If Epic lists no free games, the Worker posts nothing rather than sending an
+  empty embed. It logs an error, plus a warning that summarises the feed and
+  says whether the copy it got was stale.
 - The animation is assembled without decoding anything: Epic's CDN resizes each
   picture, [wsrv.nl](https://wsrv.nl) transcodes it to WebP, and the Worker only
   writes the container headers around the frames. A Worker gets very little CPU

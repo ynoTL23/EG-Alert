@@ -16,7 +16,8 @@ library. If a change seems to call for one, it is probably the wrong change.
 
 ```sh
 npm run dev           # local server; GET / runs the job immediately
-npm run check         # typecheck + lint + format, to check work mid-change
+npm run check         # typecheck + crons + lint + format, to check work mid-change
+npm run check:crons   # cron must clear Epic's winter rotation
 npm run typecheck     # tsc --noEmit
 npm run lint          # eslint (type-aware)
 npm run lint:fix      # eslint --fix
@@ -26,6 +27,10 @@ npm run deploy        # publish to Cloudflare
 npm run secrets       # set DISCORD_WEBHOOK_URL in production
 ```
 
+**A fresh worktree has no `node_modules`.** Run `npm install` first: without it
+`npm run check` fails with `TS2688: Cannot find type definition file`, and the
+pre-commit hook below is not installed.
+
 **Assume `npm run dev` is already running.** Don't start it, and don't start a
 second one on another port — Wrangler reloads on save, so edits are already live
 at <http://localhost:8787>. To exercise a change, just `curl` it. If the server
@@ -34,7 +39,8 @@ launching it yourself.
 
 **A Lefthook `pre-commit` hook enforces the checks** (`lefthook.yml`). It runs
 `eslint --fix` and `prettier --write` on the staged files, re-stages whatever
-they fixed, then type-checks the whole project; any failure aborts the commit.
+they fixed, runs `check:crons` when `wrangler.jsonc` is staged, then
+type-checks the whole project; any failure aborts the commit.
 `npm install` installs the hook via Lefthook's `postinstall`, but a failed
 install only prints a warning. Confirm the hook is live with
 `npx lefthook run pre-commit --all-files` — on a clean tree, because it
@@ -63,16 +69,17 @@ re-enabling either.
 
 ## Layout
 
-| File               | Responsibility                                          |
-| ------------------ | ------------------------------------------------------- |
-| `src/index.ts`     | Entrypoint: cron handler, manual trigger, orchestration |
-| `src/epic.ts`      | Fetch + filter Epic's promotions feed                   |
-| `src/discord.ts`   | Build the embed, POST to the webhook                    |
-| `src/webp.ts`      | Build the animated WebP attached to the embed           |
-| `src/constants.ts` | Values used by more than one module                     |
-| `src/types.ts`     | Types used by more than one module                      |
-| `wrangler.jsonc`   | Worker config and cron triggers                         |
-| `lefthook.yml`     | Pre-commit hook: lint, format, typecheck                |
+| File                     | Responsibility                                          |
+| ------------------------ | ------------------------------------------------------- |
+| `src/index.ts`           | Entrypoint: cron handler, manual trigger, orchestration |
+| `src/epic.ts`            | Fetch + filter Epic's promotions feed                   |
+| `src/discord.ts`         | Build the embed, POST to the webhook                    |
+| `src/webp.ts`            | Build the animated WebP attached to the embed           |
+| `src/constants.ts`       | Values used by more than one module                     |
+| `src/types.ts`           | Types used by more than one module                      |
+| `wrangler.jsonc`         | Worker config and cron triggers                         |
+| `scripts/check-crons.ts` | Fails when the cron can race Epic's rotation            |
+| `lefthook.yml`           | Pre-commit hook: lint, format, crons, typecheck         |
 
 Keep fetching, formatting, and dispatch in their own files. `epic.ts` should not
 know Discord exists.
@@ -89,35 +96,21 @@ everywhere else. Don't route it through a client object or a DI container.
 
 ## Things that will bite you
 
-**One cron, no schedule guard — this is deliberate.** `wrangler.jsonc` registers
-exactly `15 16 * * THU`, which is 12:15 PM Eastern in summer and 11:15 AM in
-winter. The hour of DST drift is accepted on purpose: Epic rotates the free
-games at 11:00 AM Eastern — 15:00 UTC in summer, 16:00 UTC in winter, because
-Epic's rotation follows DST and Cloudflare's crons don't — so 16:15 UTC is 75
-minutes past it in summer and 15 in winter. Winter is the side that can race;
-if a winter run ever logs "No free games" again, push the minute later.
-
-Do not "fix" the drift by adding a second cron and a wall-clock guard. That is
-what this repo used to do — two crons (`1 15`, `1 16`) plus `shouldSendNow()` in
-a `src/schedule.ts` that no longer exists — and it was removed on purpose once
-the send time moved to midday. Pinning the post to an exact local minute is not
-a requirement; landing safely after Epic's rotation is.
-
-The failure that motivated this: on 2026-09-03 the 15:01 UTC firing passed the
-old guard correctly (it really was 11:01 EDT), fetched Epic, and got an empty
-promotions feed — the rotation had not happened yet. The guard was working; the
-send time was simply too early.
-
-The fix then moved the cron to `1 16`, assuming Epic rotates at a fixed 15:00
-UTC. It doesn't: on 2026-11-26 (EST) the promotions started at 16:00 UTC, the
-16:01 firing raced the rotation exactly as before, and nothing posted. Check
-the feed's `startDate` in both summer and winter before moving the cron.
+**One cron, no schedule guard — this is deliberate.** Epic rotates the free
+games at 11:00 AM Eastern, and the rotation follows DST: 15:00 UTC in summer,
+16:00 UTC in winter. Cloudflare crons are UTC-only, so the one cron in
+`wrangler.jsonc` must clear the winter instant; `check:crons` enforces at
+least 10 minutes. A run that fires too early logs a stale feed and posts
+nothing. If that happens in winter, push the minute later. Landing after the
+rotation is the requirement; an exact local minute is not, which is why the old
+second cron and `shouldSendNow()` guard were removed. Both past races are
+written up under "About the schedule" in `README.md`.
 
 **Write the cron weekday as `THU`, never as a number.** Cloudflare follows
 Quartz numbering, where 1 = Sunday and Thursday is `5` — not the 0 = Sunday
 convention most cron systems use. This shipped as `1 14 * * 4` for two weeks,
-which is a perfectly valid expression that fires on **Wednesday**. Nothing
-validates the crons any more, so check this by hand when editing them.
+which is a perfectly valid expression that fires on **Wednesday**.
+`check:crons` rejects any weekday spelled otherwise.
 
 **Don't lower `compatibility_date` to make `npm run dev` start.** If the date in
 `wrangler.jsonc` is newer than the runtime bundled with the installed Wrangler,
@@ -204,6 +197,21 @@ work this way, and they are always grey — any coloured style needs a
 **Epic's feed includes games that are not currently free.**
 It returns upcoming promotions and unrelated discounts alongside the live
 giveaway. Both a live promotional window _and_ a zero price are required.
+
+## Debugging production
+
+Production logs and traces live in Workers Observability. Query them with the
+Cloudflare MCP `execute` tool: `POST
+/accounts/{account_id}/workers/observability/telemetry/query` with
+`view: "events"`, a `timeframe` in epoch milliseconds, and a filter on
+`$metadata.service` = `eg-alert`. Retention is days, not weeks: on 2026-11-26
+a query back to September returned only that day's run. Copy the evidence into
+the commit or issue while it still exists.
+
+An empty run logs an error, `No free games currently listed`, preceded by a
+warning that summarises the feed. That summary names the cause. `(already
+past: stale feed)` means the cron raced the rotation. Live free windows with
+nothing at price 0 mean Epic changed the payload.
 
 ## Secrets
 
