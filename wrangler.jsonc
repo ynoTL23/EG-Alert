@@ -4,7 +4,11 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-13",
   "observability": {
-    "enabled": true
+    "enabled": true,
+    // Traces record each subrequest (Epic, wsrv.nl, Discord) with status and
+    // timing. On 2026-11-26 the logs could not show whether the Epic fetch was
+    // a stale cache hit; a span would have.
+    "traces": { "enabled": true }
   },
   "triggers": {
     // 16:15 UTC = 12:15 PM Eastern in summer, 11:15 AM in winter. Epic rotates
