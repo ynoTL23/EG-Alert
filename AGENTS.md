@@ -193,7 +193,10 @@ ImageTransformer consumed`, which is why layers build their handles when
   passed to `unstable_startWorker()` silently runs the local simulator, which
   ignores `draw()`. Point `unstable_startWorker({ config })` at a Wrangler
   config with `"images": { "binding": "IMAGES", "remote": true }`; that calls
-  the account's real binding and spends real transformations.
+  the account's real binding and spends real transformations. `wrangler.jsonc`
+  sets `remote` for the same reason: without it `npm run dev` gets the
+  simulator, and every label fails with `9523: ... expected image in request,
+got null`.
 
 **Discord shows embed images at 400x225 on desktop.** Anything that isn't 16:9
 letterboxes inside that box (a 32:9 strip shrinks to 400x115), so every layout
