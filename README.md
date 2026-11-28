@@ -15,9 +15,10 @@ webhook.
    usual price, a link to its store page, and a countdown to when the giveaway
    ends. With several games, a "Claim all" button shows what they are worth
    together.
-4. When there is more than one game, it attaches an animated WebP that loops
-   through their key art, a second per game. A lone game gets its picture linked
-   straight from Epic's CDN instead — there is nothing to animate.
+4. It attaches one picture of the week's games, headed "FREE THIS WEEK" and
+   the dates, with each game's usual price on its art. Up to five games share
+   one collage; six or more become an animation, one frame per game. See
+   [About the image](#about-the-image).
 
 ## Setup
 
@@ -112,6 +113,51 @@ expression that fires on **Wednesday**. `npm run check:crons` rejects anything
 but `THU`, and fails when the cron lands under 10 minutes after the winter
 rotation.
 
+## About the image
+
+Discord shows an embed image in a 400x225 box on desktop, so every picture is
+16:9 and every label is sized to stay readable at that size: the 1600x900
+collage shrinks to a quarter, the 800x450 slideshow frames to half. Clicking the
+image opens it full size.
+
+| Games | Picture                                              |
+| ----- | ---------------------------------------------------- |
+| 1     | The game's art, full frame                           |
+| 2     | Two halves side by side                              |
+| 3     | One large tile, two 16:9 tiles stacked beside it     |
+| 4     | A 2x2 grid                                           |
+| 5     | Five slices leaning `/`                              |
+| 6+    | An animation, one complete frame per game, 1.5s each |
+
+Every picture carries the same labels:
+
+- **A headline chip and a date chip**, joined, top-left: "FREE THIS WEEK" in
+  white on Epic blue, then "NOV 26 – DEC 3" in black on white. The dates run
+  from the earliest start to the earliest end among the games, so they never
+  promise a game is free for longer than it is.
+- **A price tag per game**, the usual price in black on white, bottom-left of
+  each tile (bottom-right of each slice). A game Epic lists without a price gets
+  no tag. "FREE" on every game was tried and dropped: saying it once in the
+  headline is the point of the post.
+- **A black outline on every label**, so a blue or white chip still has an edge
+  on blue or white art. A drop shadow lost its top and left edges on matching
+  colours; an outline doesn't.
+
+The labels are set in [Saira Condensed](https://fonts.google.com/specimen/Saira+Condensed),
+loaded from [Fontsource](https://fontsource.org) on jsdelivr each run and pinned
+to one version. It was picked from sixteen Google Fonts compared at the same
+cap height, ruling out faces that run wide (Archivo Black, Inter) or tall and
+narrow (League Gothic).
+
+Each slideshow frame repeats the headline and its game's price, because a
+viewer with autoplay turned off only ever sees the first frame.
+
+Everything is drawn by the Cloudflare Images binding, never in the Worker: a run
+costs 2-4 transformations for a collage, or one per game for a slideshow, plus
+one for measuring the headline. If any of it fails — Epic's CDN, the font, or
+the binding past its 5,000-a-month free tier — the post still goes out, with
+Epic's own picture of the first game.
+
 ## Project layout
 
 ```
@@ -119,8 +165,10 @@ src/
   index.ts      entrypoint — cron handler, manual trigger, orchestration
   epic.ts       fetches and filters the Epic free-games feed
   discord.ts    builds the embed and posts it to the webhook
-  webp.ts       builds the looping WebP attached to the embed
-  constants.ts  values shared by more than one module (store URL)
+  webp.ts       builds the WebP attached to the embed, splices animations
+  collage.ts    draws the collage and slideshow frames in the Images binding
+  webp.test.ts  tests buildImage() against a fake Images binding
+  constants.ts  values shared by more than one module (store URL, prices)
   types.ts      shared types (FreeGame)
 scripts/
   check-crons.ts  fails when the cron can race Epic's rotation
@@ -143,12 +191,12 @@ wrangler.jsonc  Worker config and cron triggers
 - If Epic lists no free games, the Worker posts nothing rather than sending an
   empty embed. It logs an error, plus a warning that summarises the feed and
   says whether the copy it got was stale.
-- The animation is assembled without decoding anything: Epic's CDN resizes each
+- The image is assembled without decoding anything: Epic's CDN resizes each
   picture, the [Cloudflare Images](https://developers.cloudflare.com/images/optimization/binding/)
-  binding transcodes it to WebP, and the Worker only writes the container
-  headers around the frames. A Worker gets very little CPU per cron run, and
-  decoding a JPEG would spend it several times over. If a transform fails —
+  binding draws the tiles and labels, and the Worker only writes the container
+  headers around animation frames. A Worker gets very little CPU per cron run,
+  and decoding a JPEG would spend it several times over. If a transform fails —
   including past the Images Free plan's 5,000 a month — the post still goes
-  out, just without the animation.
+  out, with Epic's picture of the first game instead.
 - Epic's image URLs need `?resize=1` for the other parameters to do anything.
   `?w=480` on its own is ignored and returns the multi-megabyte original.

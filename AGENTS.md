@@ -5,9 +5,10 @@ Guidance for AI agents working in this repository.
 ## What this is
 
 A single Cloudflare Worker that posts Epic Games Store's weekly free games to a
-Discord webhook on a cron trigger. Five source files, no npm dependencies at
-runtime, no framework, no tests. It does call three services: Epic's promotions
-API, the Cloudflare Images binding (image transcoding), and the Discord webhook.
+Discord webhook on a cron trigger. Seven source files, no npm dependencies at
+runtime, no framework, one test file. It does call four services: Epic's
+promotions API, the Cloudflare Images binding (draws the embed image), the
+jsdelivr CDN (the image's font), and the Discord webhook.
 
 This project does not need a router, a logger, a DI container, or an HTTP client
 library. If a change seems to call for one, it is probably the wrong change.
@@ -74,7 +75,9 @@ re-enabling either.
 | `src/index.ts`           | Entrypoint: cron handler, manual trigger, orchestration |
 | `src/epic.ts`            | Fetch + filter Epic's promotions feed                   |
 | `src/discord.ts`         | Build the embed, POST to the webhook                    |
-| `src/webp.ts`            | Build the animated WebP attached to the embed           |
+| `src/webp.ts`            | Build the WebP attached to the embed, splice animations |
+| `src/collage.ts`         | Draw the collage and slideshow frames in the binding    |
+| `src/webp.test.ts`       | Tests for `buildImage()` against a fake binding         |
 | `src/constants.ts`       | Values used by more than one module                     |
 | `src/types.ts`           | Types used by more than one module                      |
 | `wrangler.jsonc`         | Worker config and cron triggers                         |
@@ -85,16 +88,22 @@ Keep fetching, formatting, and dispatch in their own files. `epic.ts` should not
 know Discord exists.
 
 `constants.ts` and `types.ts` are for genuinely shared values only — currently
-the free-games page URL and `FreeGame`. A constant or type used
-in one file stays in that file. Don't turn either into a dumping ground, and
-don't add barrel files.
+the free-games page URL, `formatPrice()` (embed text and image price tags) and
+`FreeGame`. A constant or type used in one file stays in that file. Don't turn
+either into a dumping ground, and don't add barrel files.
 
-`fetchFreeGames()`, `sendToDiscord()` and `buildSlideshow()` each take a trailing `doFetch` argument
-defaulting to the global `fetch`. It exists so both can be exercised against
+`fetchFreeGames()`, `sendToDiscord()` and `buildImage()` each take a trailing `doFetch` argument
+defaulting to the global `fetch`. It exists so they can be exercised against
 recorded responses instead of the live network — pass it in tests, omit it
 everywhere else. Don't route it through a client object or a DI container.
-`sendToDiscord()` and `buildSlideshow()` also take the `IMAGES` binding, passed
+`sendToDiscord()` and `buildImage()` also take the `IMAGES` binding, passed
 down from `env` the same plain way; tests hand in a fake.
+
+There is no `npm test` yet, and `node --test src/webp.test.ts` fails: Node's
+type stripping does not map the `./webp.js` import specifiers onto `.ts`
+files. Bundle first:
+`npx esbuild src/webp.test.ts --bundle --platform=node --format=esm --outfile=<tmp>/webp.test.mjs`,
+then `node --test <tmp>/webp.test.mjs`.
 
 ## Things that will bite you
 
@@ -129,9 +138,9 @@ a stale local binary changes semantics to fix a tooling problem. Deploys are not
 affected — Cloudflare's edge runtime is always current.
 
 **The Worker must never decode an image.**
-`src/webp.ts` builds the embed's animation by splicing already-encoded WebP
-bytes: Epic's CDN resizes, the `IMAGES` binding transcodes, and the Worker only
-writes RIFF headers. This is not a stylistic choice. A cron trigger on the free
+Epic's CDN resizes, the `IMAGES` binding draws every tile, label and border
+(`src/collage.ts`), and the Worker only writes RIFF headers around the
+already-encoded frames (`src/webp.ts`). This is not a stylistic choice. A cron trigger on the free
 plan gets **10ms of CPU**, and decoding one JPEG costs 100-300ms. `fetch()` and
 binding calls run outside the isolate and don't count toward that budget, which
 is the only reason this fits. Any change that decodes, composites, or re-encodes
@@ -141,14 +150,55 @@ Don't move transcoding back to a public proxy. wsrv.nl did the job until
 2026-11-27, when it began answering 403 to every request from the deployed
 Worker while serving the same URLs to everyone else; any proxy behind Cloudflare
 can block Worker traffic that way. The binding is on the Images Free plan: no
-zone needed, 5,000 transformations a month, one per game per run. Past the cap
-it throws `9422`, which `buildSlideshow()` turns into a post without animation.
+zone needed, 5,000 unique transformations a month, where unique means the same
+source and parameters, counted once per calendar month. Each `.output()` is one;
+a run spends 2-4 for a collage or one per game for a slideshow, plus the
+headline measurement, which repeats each week and so counts once a month. Past
+the cap the binding throws `9422`, which `buildImage()` turns into a post with
+Epic's own picture of the first game.
 
 Compositing pictures into one frame has to happen in the binding (`draw()`
 overlays one image on another), never in the Worker. A grid built from frames
 at their own offsets was tried and reverted: clients with autoplay disabled
-render frame 0 and stop, so viewers saw a single tile against black. Hence one
-frame per game, each a complete picture.
+render frame 0 and stop, so viewers saw a single tile against black. The
+collage is one `draw()`-built still picture for that reason, and the six-plus
+slideshow keeps one complete frame per game.
+
+**The Images binding has limits its docs don't mention.** `src/collage.ts` is
+shaped by these, all found against the real binding:
+
+- **10 entries per request.** Every `transform()` and `draw()` in a chain
+  counts, nested ones included, and the 11th fails with `9432: Bad request: 10
+"transforms" maximum`. `compose()` splits a long chain into passes, carrying
+  the canvas between them as PNG through the binding. A slideshow frame uses
+  exactly 10, so any new layer on it costs a second request per frame.
+- **Images must be drawn before text.** In one request the binding pairs an
+  image drawn after a `text()` draw with the wrong transforms: the workerd
+  wrapper numbers text and image draws in one sequence, the backend numbers
+  images first. Tiles go first, labels after; a pass that needed an image after
+  a label would have to start a new request.
+- **A handle can be drawn once.** Reusing one fails with `9525:
+ImageTransformer consumed`, which is why layers build their handles when
+  applied.
+- **Fonts are an https URL and nothing else.** `text()` without `font` fails;
+  `{ family }`, a bare family name and `local()` fail with `9432`; a `data:`
+  URL fails with `9419 ... not allowed`. There are no system fonts. The font is
+  Saira Condensed from Fontsource on jsdelivr, pinned to a version so its
+  metrics can't change under the measured headline width.
+- **`text()` has no glyph fallback.** Characters the font lacks render as
+  nothing; U+0336 combining strikethrough was tried for struck-out prices and
+  drew nothing.
+- **Testing needs the real binding.** `getPlatformProxy()` has no
+  `IMAGES.text`, and an inline `{ type: "images", remote: true }` binding
+  passed to `unstable_startWorker()` silently runs the local simulator, which
+  ignores `draw()`. Point `unstable_startWorker({ config })` at a Wrangler
+  config with `"images": { "binding": "IMAGES", "remote": true }`; that calls
+  the account's real binding and spends real transformations.
+
+**Discord shows embed images at 400x225 on desktop.** Anything that isn't 16:9
+letterboxes inside that box (a 32:9 strip shrinks to 400x115), so every layout
+is 16:9, and label sizes are chosen to land at 13px or more after the shrink:
+1/4 for the 1600x900 collage, 1/2 for 800x450 slideshow frames.
 
 **Every frame must stand alone.**
 GIF/WebP autoplay is a client-side accessibility setting that the API cannot
@@ -180,7 +230,7 @@ changed payload is noticed.
 
 **Don't format prices with `Intl.NumberFormat`.**
 Constructing the first one loads locale data: ~10ms measured in Node, against a
-10ms CPU budget for the whole cron run. `formatPrice()` in `src/discord.ts` uses
+10ms CPU budget for the whole cron run. `formatPrice()` in `src/constants.ts` uses
 `toFixed(2)`, which is enough because the request pins `country=US` and
 `listPrice()` drops anything that isn't US cents. Changing the country means
 revisiting both.
