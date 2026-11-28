@@ -1,11 +1,11 @@
-import { FREE_GAMES_PAGE_URL } from "./constants.js";
-import { buildSlideshow } from "./webp.js";
+import { FREE_GAMES_PAGE_URL, formatPrice } from "./constants.js";
+import { buildImage } from "./webp.js";
 import type { FreeGame } from "./types.js";
 
 const EPIC_BLUE = 0x0078f2;
 
 /** Referenced by the embed via Discord's `attachment://` scheme. */
-const SLIDESHOW_FILENAME = "free-games.webp";
+const IMAGE_FILENAME = "free-games.webp";
 
 /**
  * Epic's cart takes one `offers` param per game, so several games claimed
@@ -34,14 +34,6 @@ function claimWindow(endDate: string | null): string | null {
   if (!Number.isFinite(ts)) return null;
   // <t:...:R> renders as "in 6 days" in each viewer's own locale.
   return `⏳ Free until <t:${ts}:F> (<t:${ts}:R>)`;
-}
-
-/**
- * Not `Intl.NumberFormat`: building the first one loads locale data and took
- * ~10ms when measured in Node, which is the whole CPU budget of a cron run.
- */
-function formatPrice(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
 }
 
 /**
@@ -155,7 +147,7 @@ function claimAllButton(games: FreeGame[]) {
 }
 
 /**
- * `images` is the Worker's `IMAGES` binding, which builds the slideshow tiles.
+ * `images` is the Worker's `IMAGES` binding, which draws the attached image.
  * `doFetch` defaults to the global — see the note on fetchFreeGames.
  */
 export async function sendToDiscord(
@@ -164,18 +156,16 @@ export async function sendToDiscord(
   images: ImagesBinding,
   doFetch: typeof fetch = fetch,
 ): Promise<void> {
-  const slideshow = await buildSlideshow(games, images, doFetch);
+  const image = await buildImage(games, images, doFetch);
 
-  // Upload the animation with the message rather than hotlinking it: Discord
-  // then hosts it, so there is no third-party URL to expire or rate-limit.
+  // Upload the image with the message rather than hotlinking it: Discord then
+  // hosts it, so there is no third-party URL to expire or rate-limit.
   //
-  // Without one — a lone free game, or a failed build — the embed points at the
+  // Without one — a failed build, or no game with art — the embed points at the
   // first game's art on Epic's CDN. Nothing is uploaded in that case.
   const embed = buildEmbed(
     games,
-    slideshow
-      ? `attachment://${SLIDESHOW_FILENAME}`
-      : (games[0]?.imageUrl ?? null),
+    image ? `attachment://${IMAGE_FILENAME}` : (games[0]?.imageUrl ?? null),
   );
 
   const form = new FormData();
@@ -187,11 +177,11 @@ export async function sendToDiscord(
       ...(components.length ? { components } : {}),
     }),
   );
-  if (slideshow) {
+  if (image) {
     form.append(
       "files[0]",
-      new Blob([slideshow], { type: "image/webp" }),
-      SLIDESHOW_FILENAME,
+      new Blob([image], { type: "image/webp" }),
+      IMAGE_FILENAME,
     );
   }
 

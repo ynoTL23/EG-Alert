@@ -1,11 +1,19 @@
+import {
+  buildCollage,
+  buildFrames,
+  FRAME_HEIGHT,
+  FRAME_WIDTH,
+  MAX_COLLAGE_GAMES,
+  type PicturedGame,
+} from "./collage.js";
 import type { FreeGame } from "./types.js";
 
 /**
- * Builds the animated WebP shown in the Discord embed: one frame per free game,
- * looping.
+ * Builds the WebP shown in the Discord embed: one collage for up to five games,
+ * or, for six or more, an animation with one frame per game, looping.
  *
  * The Worker never decodes a pixel. Epic's CDN resizes, the Cloudflare Images
- * binding transcodes each tile to WebP, and this module only splices the
+ * binding draws every picture (collage.ts), and this module only splices the
  * resulting byte ranges into one RIFF container. That matters: decoding a JPEG
  * costs 100-300ms, and a Worker on the free plan gets 10ms of CPU per cron
  * invocation. The binding is a call out of the isolate, like `fetch()`, so the
@@ -18,19 +26,6 @@ import type { FreeGame } from "./types.js";
 
 /** How long each game's full-size frame is displayed. */
 const FRAME_DELAY_MS = 1500;
-
-/**
- * Epic's CDN only resizes when `resize=1` is present. Without it the request
- * falls through to S3 and returns the multi-megabyte original, so it is not
- * optional — it is the difference between a 40KB fetch and a 3MB one.
- */
-function epicSized(url: string, width: number): string {
-  return `${url}?resize=1&w=${width}`;
-}
-
-/** Every frame fills the canvas, sized to Epic's 16:9 key art. */
-const FRAME_WIDTH = 800;
-const FRAME_HEIGHT = 450;
 
 /** WebP stores canvas/offset fields as 24-bit little-endian. */
 function uint24(value: number): Uint8Array {
@@ -148,89 +143,78 @@ function container(
   return file;
 }
 
-async function fetchTile(
-  source: string,
-  images: ImagesBinding,
-  doFetch: typeof fetch,
-): Promise<Uint8Array> {
-  // Request the source at 2x the tile so the transform is downscaling, never
-  // upscaling.
-  const res = await doFetch(epicSized(source, FRAME_WIDTH * 2));
-  if (!res.ok || !res.body) {
-    throw new Error(`Tile fetch failed: ${res.status} ${res.statusText}`);
-  }
-  // workers-types declares `body` as `ReadableStream<any>`; the Fetch spec says
-  // its chunks are always Uint8Array.
-  const original = res.body as ReadableStream<Uint8Array>;
-  // Throws an ImagesError (e.g. 9422 once the free tier's 5,000 monthly
-  // transformations are spent), which buildSlideshow turns into "no animation".
-  const result = await images
-    .input(original)
-    .transform({ width: FRAME_WIDTH, height: FRAME_HEIGHT, fit: "cover" })
-    .output({ format: "image/webp", quality: 80 });
-  const bytes = new Uint8Array(await result.response().arrayBuffer());
-  // The splice below trusts the container, so check it is one: a WebP always
-  // starts RIFF....WEBP.
+/** The splice trusts the container, so check it is one: a WebP always starts RIFF....WEBP. */
+function assertWebp(bytes: Uint8Array): Uint8Array {
   const header = new TextDecoder().decode(bytes.subarray(0, 12));
   if (!header.startsWith("RIFF") || !header.endsWith("WEBP")) {
-    throw new Error("Tile fetch returned something that is not a WebP");
+    throw new Error("The Images binding returned something that is not a WebP");
   }
   return bytes;
 }
 
 /**
- * One frame per game, each the game's full key art, looping.
+ * One frame per game, looping.
  *
  * Viewers with autoplay disabled — a client-side accessibility setting the API
  * cannot override — see frame 0 and nothing else, so every frame is a complete
- * picture rather than part of a composition.
+ * picture with its own headline and price rather than part of a composition.
+ */
+async function buildSlideshow(
+  games: readonly PicturedGame[],
+  images: ImagesBinding,
+  doFetch: typeof fetch,
+): Promise<Uint8Array> {
+  const tiles = await buildFrames(games, images, doFetch);
+  const bitstreams = tiles.map((tile) => bitstreamChunk(assertWebp(tile)));
+  const frames = bitstreams.map((bitstream) =>
+    animationFrame(
+      bitstream,
+      { x: 0, y: 0, w: FRAME_WIDTH, h: FRAME_HEIGHT },
+      FRAME_DELAY_MS,
+    ),
+  );
+
+  const hasAlpha = bitstreams.some(
+    (bitstream) =>
+      new TextDecoder().decode(bitstream.subarray(0, 4)) === "ALPH",
+  );
+
+  return container(FRAME_WIDTH, FRAME_HEIGHT, frames, hasAlpha);
+}
+
+/**
+ * The image attached to the embed: a still collage for one to five games, an
+ * animation for six or more. Games without key art are left out of it.
  *
- * Returns `null` rather than throwing when the art cannot be built: a missing
+ * Returns `null` rather than throwing when the image cannot be built: a missing
  * image is not a reason to skip the week's post.
  *
  * `images` is the Worker's `IMAGES` binding. `doFetch` defaults to the global,
  * matching `fetchFreeGames`/`sendToDiscord`.
  */
-export async function buildSlideshow(
-  games: FreeGame[],
+export async function buildImage(
+  games: readonly FreeGame[],
   images: ImagesBinding,
   doFetch: typeof fetch = fetch,
 ): Promise<Uint8Array | null> {
-  const sources = games.map((g) => g.imageUrl).filter((url) => url !== null);
-  // Nothing to animate through: one game's art is just a picture, and the embed
-  // links Epic's CDN copy of it directly rather than re-hosting a one-frame loop.
-  if (sources.length < 2) return null;
+  const pictured = games.filter(
+    (game): game is PicturedGame => game.imageUrl !== null,
+  );
+  if (pictured.length === 0) return null;
 
   try {
-    const tiles = await Promise.all(
-      sources.map((url) => fetchTile(url, images, doFetch)),
-    );
-
-    const bitstreams = tiles.map(bitstreamChunk);
-    const frames = bitstreams.map((bitstream) =>
-      animationFrame(
-        bitstream,
-        { x: 0, y: 0, w: FRAME_WIDTH, h: FRAME_HEIGHT },
-        FRAME_DELAY_MS,
-      ),
-    );
-
-    const hasAlpha = bitstreams.some(
-      (bitstream) =>
-        new TextDecoder().decode(bitstream.subarray(0, 4)) === "ALPH",
-    );
-
-    return container(FRAME_WIDTH, FRAME_HEIGHT, frames, hasAlpha);
+    // Throws an ImagesError (e.g. 9422 once the free tier's 5,000 monthly
+    // transformations are spent), which the catch turns into "no image".
+    return pictured.length <= MAX_COLLAGE_GAMES
+      ? await buildCollage(pictured, images, doFetch)
+      : await buildSlideshow(pictured, images, doFetch);
   } catch (err) {
     // If Epic's CDN or the Images binding is having a bad Thursday the post
-    // still goes out, just without the animation. The message is logged on its
-    // own because Workers Logs recorded only the stack on 2026-11-27, which
-    // hid the 403 that caused it.
+    // still goes out, with Epic's own picture of the first game instead. The
+    // message is logged on its own because Workers Logs recorded only the
+    // stack on 2026-11-27, which hid the 403 that caused it.
     const message = err instanceof Error ? err.message : String(err);
-    console.error(
-      `Slideshow build failed; posting without it: ${message}`,
-      err,
-    );
+    console.error(`Image build failed; posting without it: ${message}`, err);
     return null;
   }
 }

@@ -335,13 +335,15 @@ export async function fetchFreeGames(
     seen.add(key);
 
     const slug = resolveSlug(el);
+    const window = activeOffer(el, now);
 
     games.push({
       title: el.title,
       url: slug ? `${STORE_BASE}${slug}` : FREE_GAMES_PAGE_URL,
       offer,
       imageUrl: pickImage(el, IMAGE_TYPES),
-      endDate: activeOffer(el, now)?.endDate ?? null,
+      startDate: window?.startDate ?? null,
+      endDate: window?.endDate ?? null,
       price: listPrice(el),
     });
   }
